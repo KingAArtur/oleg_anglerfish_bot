@@ -1,0 +1,5 @@
+nltk
+pymorphy3
+pytest
+python-telegram-bot
+tqdm
