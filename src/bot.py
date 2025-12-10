@@ -6,7 +6,7 @@ from textwrap import dedent
 import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
 
-from src.modules import NGramTalkModule
+from src.modules import NGramTalkModule, SantaModule
 
 
 class BotState(Enum):
@@ -14,6 +14,7 @@ class BotState(Enum):
     LEARN_TEXT_WAITING_TEXT_ID = 2
     LEARN_TEXT_WAITING_TEXT = 3
     FORGET_TEXT_WAITING_TEXT_ID = 4
+    HIDDEN_SANTA_WAITING_FILE = 5
 
 
 class FileManager:
@@ -42,6 +43,8 @@ class Bot:
                 text = "\n".join(file.readlines())
             self.ngram_talk_module.deserialize_from_text(text)
         self.text_id: str = ""
+
+        self.santa_module = SantaModule()
 
         self.app = ApplicationBuilder().token(self.token).build()
         self.app.add_handler(MessageHandler(None, self.handle_update))
@@ -89,15 +92,24 @@ class Bot:
 
     async def handle_message(self, message: telegram.Message):
         if message.document:
+            file = await message.document.get_file()
+            self.logger.info(f"Downloading the file {file.file_path}")
+            saved_path = self.file_manager(self.TMP_TEXT_FILE_NAME)
+            with open(saved_path, "wb") as saved:
+                await file.download_to_memory(saved)
+
             if self.state == BotState.LEARN_TEXT_WAITING_TEXT:
-                file = await message.document.get_file()
-                self.logger.info(f"Downloading the file {file.file_path}")
-                with open(self.file_manager(self.TMP_TEXT_FILE_NAME), "wb") as src:
-                    await file.download_to_memory(src)
-                with open(self.file_manager(self.TMP_TEXT_FILE_NAME), encoding="utf-8") as src:
-                    self.ngram_talk_module.learn_text(self.text_id, '\n'.join(src.readlines()))
+                with open(saved_path, encoding="utf-8") as saved:
+                    self.ngram_talk_module.learn_text(self.text_id, '\n'.join(saved.readlines()))
                     await self._reply(message, f'Текст сохранен как {self.text_id}')
                     self.state = BotState.IDLE
+            elif self.state == BotState.HIDDEN_SANTA_WAITING_FILE:
+                with open(saved_path, encoding="utf-8") as saved:
+                    self.santa_module.initialize_from_str('\n'.join(saved.readlines()))
+                    await self._reply(message, f'Прочитал! {len(self.santa_module.usernames)} юзеров и {len(self.santa_module.forbidden_pairs)} пар')
+                    self.state = BotState.IDLE
+            else:
+                await self._reply(message, "Не ожидаю файл... мне пофиг на него")
             return
 
         if not message.text:
@@ -130,6 +142,25 @@ class Bot:
                 """
             )
             await self._reply(message, msg)
+            return
+        elif text.startswith("/santa_init"):
+            if not self.is_admin(message.from_user):
+                await self._reply(message, "У тебя нет полномочий для этого!")
+                return
+            self.state = BotState.HIDDEN_SANTA_WAITING_FILE
+            await self._reply(message, f'Пришли текстовый файл с юзерами и запрещенными парами.')
+            return
+        elif text.startswith("/santa_start"):
+            if not self.is_admin(message.from_user):
+                await self._reply(message, "У тебя нет полномочий для этого!")
+                return
+            seed = text[len("/santa_start"):].strip()
+            self.santa_module.generate_permutation(seed)
+            await self._reply(message, f"Перестановка сгенерирована! Успехов! seed: '{seed}'")
+            return
+        elif text.startswith("/santa"):
+            text = self.santa_module.handle_message(message)
+            await self._reply(message, text)
             return
 
         if self.state == BotState.IDLE:
