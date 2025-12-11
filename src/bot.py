@@ -6,7 +6,7 @@ from textwrap import dedent
 import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
 
-from src.modules import NGramTalkModule, SantaModule
+from modules import NGramTalkModule, SantaModule
 
 
 class BotState(Enum):

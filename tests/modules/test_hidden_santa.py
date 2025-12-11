@@ -1,6 +1,6 @@
 import pytest
 
-from src.modules import SantaModule
+from modules import SantaModule
 
 
 @pytest.fixture()

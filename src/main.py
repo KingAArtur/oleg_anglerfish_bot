@@ -1,7 +1,7 @@
 import logging
 import asyncio
 
-from src.bot import Bot
+from bot import Bot
 
 
 logging.basicConfig(

@@ -1,6 +1,6 @@
 import pytest
 
-from src.modules import NGramTalkModule
+from modules import NGramTalkModule
 
 
 @pytest.fixture()
