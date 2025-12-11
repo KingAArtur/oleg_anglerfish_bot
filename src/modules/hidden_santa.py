@@ -81,4 +81,4 @@ class SantaModule(BaseModule):
         if username not in self.permutation:
             return f"Your username {username} is not in permutation! Sorry about that ^^"
 
-        return f"Ты, {username}, даришь подарок {self.permutation[username]}! Такие дела."
+        return f"Ты, {username}, даришь подарок @{self.permutation[username]}! Такие дела."

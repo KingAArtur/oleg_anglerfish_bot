@@ -73,8 +73,11 @@ class Bot:
     def is_admin(self, user: telegram.User):
         return user.id == int(os.getenv("ADMIN_ID"))
 
-    async def _reply(self, message: telegram.Message, text: str):
-        self.logger.info(f"Sending message: {text}")
+    async def _reply(self, message: telegram.Message, text: str, hide_text: bool = False):
+        user_str = message.from_user.username
+        chat_str = message.chat.type + (message.chat.title or '')
+        text_str = text if not hide_text else "<hidden>"
+        self.logger.info(f"Sending message to user {user_str} in chat {chat_str}: '{text_str}' | {message.id}")
         await message.reply_text(text)
 
     async def handle_update(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
@@ -91,9 +94,13 @@ class Bot:
                 await self._reply(update.message, "Ошибка")
 
     async def handle_message(self, message: telegram.Message):
+        user_str = message.from_user.username
+        chat_str = message.chat.type + (message.chat.title or '')
+        self.logger.info(f"Got message from user {user_str} in chat {chat_str} | {message.id}")
+
         if message.document:
             file = await message.document.get_file()
-            self.logger.info(f"Downloading the file {file.file_path}")
+            self.logger.info(f"Downloading the file {file.file_path} | {message.id}")
             saved_path = self.file_manager(self.TMP_TEXT_FILE_NAME)
             with open(saved_path, "wb") as saved:
                 await file.download_to_memory(saved)
@@ -117,7 +124,7 @@ class Bot:
             return
 
         text = message.text
-        self.logger.info(f"Got message '{text}' from user {message.from_user} in chat {message.chat.type + (message.chat.title or '')}")
+        self.logger.info(f"Message text: '{text}' | {message.id}")
 
         # some commands are independent of current state
         if text.startswith("/start"):
@@ -154,13 +161,13 @@ class Bot:
             if not self.is_admin(message.from_user):
                 await self._reply(message, "У тебя нет полномочий для этого!")
                 return
-            seed = text[len("/santa_start"):].strip()
+            seed = text.split(maxsplit=1)[1].strip() if len(text.split()) >= 2 else None
             self.santa_module.generate_permutation(seed)
             await self._reply(message, f"Перестановка сгенерирована! Успехов! seed: '{seed}'")
             return
         elif text.startswith("/santa"):
             text = self.santa_module.handle_message(message)
-            await self._reply(message, text)
+            await self._reply(message, text, hide_text=True)
             return
 
         if self.state == BotState.IDLE:

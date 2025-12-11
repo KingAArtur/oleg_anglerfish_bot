@@ -80,3 +80,102 @@ def test_only_two_logins():
     santa_module.initialize(["1", "2"], [("1", "2")])
     with pytest.raises(StopIteration):
         santa_module.generate_permutation()
+
+
+def test_equal_distribution():
+    usernames = ["1", "2", "3", "4", "5", "6"]
+    santa_module = SantaModule()
+    santa_module.initialize(usernames)
+
+    counts = {
+        name: {name: 0 for name in usernames}
+        for name in usernames
+    }
+
+    N_ATTEMPTS = 1000
+    MIN_PROPORTION_COEF = 0.7
+    for _ in range(N_ATTEMPTS):
+        santa_module.generate_permutation()
+        for sender, receiver in santa_module.permutation.items():
+            counts[sender][receiver] += 1
+
+    for sender in usernames:
+        assert sum(counts[sender].values()) == N_ATTEMPTS
+        for receiver in usernames:
+            if receiver == sender:
+                continue
+            assert counts[sender][receiver] >= MIN_PROPORTION_COEF * (N_ATTEMPTS / (len(usernames) - 1))
+
+
+def test_equal_distribution__forbidden_pairs(santa_module):
+    usernames = santa_module.usernames
+
+    counts = {
+        name: {name: 0 for name in usernames}
+        for name in usernames
+    }
+    # distribution is not equal because of forbidden pairs, but I am lazy to calculate
+    expected_proportions = {
+        "1": {
+            "1": 0.0,
+            "2": 0.0,
+            "3": 0.25,
+            "4": 0.25,
+            "5": 0.25,
+            "6": 0.25,
+        },
+        "2": {
+            "1": 0.0,
+            "2": 0.2,
+            "3": 0.2,
+            "4": 0.2,
+            "5": 0.2,
+            "6": 0.2,
+        },
+        "3": {
+            "1": 0.25,
+            "2": 0.25,
+            "3": 0.0,
+            "4": 0.0,
+            "5": 0.25,
+            "6": 0.25,
+        },
+        "4": {
+            "1": 0.25,
+            "2": 0.25,
+            "3": 0.0,
+            "4": 0.0,
+            "5": 0.25,
+            "6": 0.25,
+        },
+        "5": {
+            "1": 0.2,
+            "2": 0.2,
+            "3": 0.2,
+            "4": 0.2,
+            "5": 0.0,
+            "6": 0.2,
+        },
+        "6": {
+            "1": 0.2,
+            "2": 0.2,
+            "3": 0.2,
+            "4": 0.2,
+            "5": 0.2,
+            "6": 0.0,
+        },
+    }
+
+    N_ATTEMPTS = 1000
+    MIN_PROPORTION_COEF = 0.7
+    for _ in range(N_ATTEMPTS):
+        santa_module.generate_permutation()
+        for sender, receiver in santa_module.permutation.items():
+            counts[sender][receiver] += 1
+
+    for sender in usernames:
+        assert sum(counts[sender].values()) == N_ATTEMPTS
+        for receiver in usernames:
+            if receiver == sender or (sender, receiver) in santa_module.forbidden_pairs:
+                continue
+            assert counts[sender][receiver] >= MIN_PROPORTION_COEF * expected_proportions[sender][receiver] * N_ATTEMPTS
