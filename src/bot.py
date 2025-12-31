@@ -75,10 +75,13 @@ class Bot:
 
     async def _reply(self, message: telegram.Message, text: str, hide_text: bool = False):
         user_str = message.from_user.username
-        chat_str = message.chat.type + (message.chat.title or '')
+        chat_str = message.chat.type + ' ' + (message.chat.title or '') + ' ' + (str(message.chat.id) or '') + ' ' + (str(message.message_thread_id) or '')
         text_str = text if not hide_text else "<hidden>"
         self.logger.info(f"Sending message to user {user_str} in chat {chat_str}: '{text_str}' | {message.id}")
         await message.reply_text(text)
+
+    async def send_message(self, *, chat_id: int, message_thread_id: int = None, text: str):
+        await self.app.bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
     async def handle_update(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -127,6 +130,15 @@ class Bot:
         self.logger.info(f"Message text: '{text}' | {message.id}")
 
         # some commands are independent of current state
+        if text.startswith("/send"):
+            if not self.is_admin(message.from_user):
+                await self._reply(message, "У тебя нет полномочий для этого!")
+                return
+
+            _, chat_id, message_thread_id, text = text.split(maxsplit=3)
+            await self.send_message(chat_id=chat_id, message_thread_id=message_thread_id, text=text)
+            return
+
         if text.startswith("/start"):
             await self._reply(message, f'Старт! Твой id: {message.from_user.id}, держу в курсе!')
             self.state = BotState.IDLE
