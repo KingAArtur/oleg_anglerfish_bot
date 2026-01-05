@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 from enum import Enum
 from textwrap import dedent
 
@@ -123,7 +124,18 @@ class Bot:
             return
 
         if not message.text:
-            await self._reply(f'Апчхи!')
+            random_reaction = random.choice(
+                [
+                    telegram.constants.ReactionEmoji.EYES,
+                    telegram.constants.ReactionEmoji.FACE_SCREAMING_IN_FEAR,
+                    telegram.constants.ReactionEmoji.FACE_WITH_ONE_EYEBROW_RAISED,
+                    telegram.constants.ReactionEmoji.FEARFUL_FACE,
+                    telegram.constants.ReactionEmoji.FIRE,
+                    telegram.constants.ReactionEmoji.HANDSHAKE,
+                    telegram.constants.ReactionEmoji.OK_HAND_SIGN,
+                ]
+            )
+            await message.set_reaction(reaction=[random_reaction])
             return
 
         text = message.text
