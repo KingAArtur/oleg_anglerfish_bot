@@ -1,7 +1,6 @@
 import random
 
-from telegram import Message
-
+from src.base_classes import Message
 from .base import BaseModule
 
 

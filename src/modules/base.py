@@ -1,7 +1,6 @@
 from abc import ABC
 
-from telegram import Message
-from telegram.ext import ContextTypes
+from src.base_classes import Message
 
 
 class BaseModule(ABC):
