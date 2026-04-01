@@ -3,6 +3,16 @@ import logging
 import datetime
 
 
+def set_handler(logger: logging.Logger, handler: logging.Handler):
+    formatter = logging.Formatter(
+        fmt='%(asctime)s - %(name)s - %(levelname)s | %(message)s',
+        datefmt='%m-%d-%Y %H:%M:%S',
+    )
+    logger.handlers.clear()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+
 class Logger(ABC):
     def __init__(self):
         pass
@@ -25,6 +35,8 @@ class BaseLogger(Logger):
         super().__init__()
 
         self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.INFO)
+        set_handler(self.logger, logging.StreamHandler())
 
     def _logger(self):
         return self.logger
@@ -46,7 +58,8 @@ class FileLogger(BaseLogger):
     def __init__(self, name: str, filename: str):
         super().__init__(name=name)
 
-        self.logger.addHandler(logging.FileHandler(filename=filename))
+        handler = logging.FileHandler(filename=filename)
+        set_handler(self.logger, handler)
 
 
 class DateFileLogger(FileLogger):
@@ -65,8 +78,9 @@ class DateFileLogger(FileLogger):
 
     def _logger(self):
         if self.date != datetime.date.today():
-            self.logger.handlers.clear()
             self.date = datetime.date.today()
-            self.logger.addHandler(logging.FileHandler(filename=self._name_with_date(self.filename, self.date)))
+
+            handler = logging.FileHandler(filename=self._name_with_date(self.filename, self.date))
+            set_handler(self.logger, handler)
 
         return self.logger
