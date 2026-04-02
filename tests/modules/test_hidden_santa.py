@@ -1,4 +1,5 @@
 import pytest
+from textwrap import dedent
 
 from modules import SantaModule
 
@@ -52,15 +53,16 @@ def test_generate_permutation__different_for_different_seeds(santa_module):
 
 
 def test_initialize_from_str(santa_module):
-    s = "\n".join(
-        [
-            "1, 2, 3, 4, 5, 6",
-            "",
-            "1, 2",
-            "3, 4",
-            "4, 3",
-        ]
+    s = dedent(
+        """\
+        1, 2, 3, 4, 5, 6
+        
+        1, 2
+        3, 4
+        4, 3
+        """
     )
+
     santa_module_from_str = SantaModule()
     santa_module_from_str.initialize_from_str(s)
 
