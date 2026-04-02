@@ -1,11 +1,12 @@
-import logging
 import os
 import random
 from enum import Enum
 from textwrap import dedent
+from dataclasses import dataclass
+from pathlib import Path
 
-import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
+from src.base_classes import Message, User
+from src.logger import Logger, BaseLogger
 
 from modules import NGramTalkModule, SantaModule
 
@@ -19,24 +20,59 @@ class BotState(Enum):
 
 
 class FileManager:
-    def __init__(self, dir_path: str):
-        if not os.path.isdir(dir_path):
-            os.mkdir(path=dir_path)
+    def __init__(self, dir_path: str | Path):
+        if isinstance(dir_path, str):
+            dir_path = Path(dir_path)
 
-        self.dir_path = dir_path
+        if not dir_path.exists():
+            dir_path.mkdir()
 
-    def __call__(self, file_name: str) -> str:
-        return os.path.join(self.dir_path, file_name)
+        if dir_path.is_file():
+            raise FileExistsError(p)
+
+        self.dir_path: Path = dir_path
+
+    def __call__(self, file_name: str) -> Path:
+        return self.dir_path / file_name
+
+
+@dataclass
+class Reply:
+    text: str | None = None
+    sticker: str | None = None
+    reaction: str | None = None
+
+
+class World:
+    def __init__(self):
+        pass
+
+    def reply(self, message: Message, reply: Reply):
+        raise NotImplementedError
+
+    def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
+        raise NotImplementedError
+
+    def is_admin(self, user: User) -> bool:
+        raise NotImplementedError
 
 
 class Bot:
     TMP_TEXT_FILE_NAME: str = "tmp.txt"
     NGRAM_MODULE_SAVE_FILE_NAME: str = "ngram_module_save_file.txt"
 
-    def __init__(self):
+    def __init__(self, dir_path: str | Path = "./files", logger: Logger | None = None, world: World | None = None):
+        if logger is None:
+            logger = BaseLogger(name="Bot")
+        self.logger: Logger = logger
+
+        if world is None:
+            world = World()
+        self.world: World = world
+
         self.state: BotState = BotState.IDLE  # later it should be state per user or group, now its just global
 
-        self.file_manager = FileManager(dir_path="files")
+        self.file_manager = FileManager(dir_path=dir_path)
 
         self.ngram_talk_module: NGramTalkModule = NGramTalkModule(n=3)
         if os.path.exists(self.file_manager(self.NGRAM_MODULE_SAVE_FILE_NAME)):
@@ -47,15 +83,7 @@ class Bot:
 
         self.santa_module = SantaModule()
 
-        self.app = ApplicationBuilder().token(self.token).build()
-        self.app.add_handler(MessageHandler(None, self.handle_update))
-
-        self.logger = logging.getLogger("Bot")
-
-    def start(self):
-        self.app.run_polling()
-
-    async def shutdown(self):
+    def exit(self):
         """Saving some state before turning off"""
         self.logger.info("Shutdown!")
         if os.path.exists(self.file_manager(self.TMP_TEXT_FILE_NAME)):
@@ -65,148 +93,146 @@ class Bot:
         with open(self.file_manager(self.NGRAM_MODULE_SAVE_FILE_NAME), "w", encoding="utf-8") as file:
             file.write(ngram_module_serialized)
 
-        await self.app.shutdown()
+    def __enter__(self):
+        return self
 
-    @property
-    def token(self) -> str:
-        return os.getenv("BOT_TOKEN")
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.exit()
 
-    def is_admin(self, user: telegram.User):
-        return user.id == int(os.getenv("ADMIN_ID"))
-
-    async def _reply(self, message: telegram.Message, text: str, hide_text: bool = False):
+    def _reply(self, message: Message, reply: Reply, hide_text: bool = False):
         user_str = message.from_user.username
-        chat_str = message.chat.type + ' ' + (message.chat.title or '') + ' ' + (str(message.chat.id) or '') + ' ' + (str(message.message_thread_id) or '')
-        text_str = text if not hide_text else "<hidden>"
-        self.logger.info(f"Sending message to user {user_str} in chat {chat_str}: '{text_str}' | {message.id}")
-        await message.reply_text(text)
+        chat_str = (
+            (message.chat.type or '') + ' ' + (message.chat.title or '') + ' ' + (str(message.chat.id) or '')
+            + ' ' + (str(message.message_thread_id) or '')
+        )
+        text_for_log = "<hidden>" if hide_text and reply.text is not None else reply.text
+        self.logger.info(f"Replying to user {user_str} in chat {chat_str}: '{text_for_log or reply.sticker or reply.reaction}' | {message.id}")
+        return self.world.reply(message=message, reply=reply)
 
-    async def send_message(self, *, chat_id: int, message_thread_id: int = None, text: str):
-        await self.app.bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
+    def _send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
+        return self.world.send_text_to_any_chat(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
-    async def handle_update(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            if update.message is not None:
-                await self.handle_message(update.message)
-            else:
-                self.logger.info(f"No message in update {update.update_id}")
-
-        except Exception as e:
-            err_msg = '\n'.join(e.args)
-            self.logger.warning(err_msg)
-            if update.message:
-                await self._reply(update.message, "Ошибка")
-
-    async def handle_message(self, message: telegram.Message):
+    def handle_message(self, message: Message):
         user_str = message.from_user.username
-        chat_str = message.chat.type + (message.chat.title or '')
+        chat_str = (message.chat.type or '') + (message.chat.title or '')
         self.logger.info(f"Got message from user {user_str} in chat {chat_str} | {message.id}")
 
-        if message.document:
-            file = await message.document.get_file()
-            self.logger.info(f"Downloading the file {file.file_path} | {message.id}")
-            saved_path = self.file_manager(self.TMP_TEXT_FILE_NAME)
-            with open(saved_path, "wb") as saved:
-                await file.download_to_memory(saved)
-
-            if self.state == BotState.LEARN_TEXT_WAITING_TEXT:
-                with open(saved_path, encoding="utf-8") as saved:
-                    self.ngram_talk_module.learn_text(self.text_id, '\n'.join(saved.readlines()))
-                    await self._reply(message, f'Текст сохранен как {self.text_id}')
-                    self.state = BotState.IDLE
-            elif self.state == BotState.HIDDEN_SANTA_WAITING_FILE:
-                with open(saved_path, encoding="utf-8") as saved:
-                    self.santa_module.initialize_from_str('\n'.join(saved.readlines()))
-                    await self._reply(message, f'Прочитал! {len(self.santa_module.usernames)} юзеров и {len(self.santa_module.forbidden_pairs)} пар')
-                    self.state = BotState.IDLE
+        try:
+            if message.filepath:
+                self.handle_file(message)
+            elif message.text:
+                self.handle_text(message)
             else:
-                await self._reply(message, "Не ожидаю файл... мне пофиг на него")
+                random_reaction = random.choice(
+                    [
+                        "EYES",
+                        "FACE_SCREAMING_IN_FEAR",
+                        "FACE_WITH_ONE_EYEBROW_RAISED",
+                        "FEARFUL_FACE",
+                        "FIRE",
+                        "HANDSHAKE",
+                        "OK_HAND_SIGN",
+                    ]
+                )
+                self.world.reply(message, reply=Reply(reaction=random_reaction))
+
+        except Exception as e:
+            err_msg = '\n'.join([str(a) for a in e.args])
+            self.logger.warning(err_msg)
+            self._reply(message, Reply(text="Ошибка"))
+
+    def handle_file(self, message: Message):
+        self.logger.info(f"Got file {message.filepath} | {message.id}")
+        if not message.filepath:
             return
 
-        if not message.text:
-            random_reaction = random.choice(
-                [
-                    telegram.constants.ReactionEmoji.EYES,
-                    telegram.constants.ReactionEmoji.FACE_SCREAMING_IN_FEAR,
-                    telegram.constants.ReactionEmoji.FACE_WITH_ONE_EYEBROW_RAISED,
-                    telegram.constants.ReactionEmoji.FEARFUL_FACE,
-                    telegram.constants.ReactionEmoji.FIRE,
-                    telegram.constants.ReactionEmoji.HANDSHAKE,
-                    telegram.constants.ReactionEmoji.OK_HAND_SIGN,
-                ]
-            )
-            await message.set_reaction(reaction=[random_reaction])
-            return
+        filepath = message.filepath
 
+        if self.state == BotState.LEARN_TEXT_WAITING_TEXT:
+            with open(self.file_manager(filepath), encoding="utf-8") as file:
+                self.ngram_talk_module.learn_text(self.text_id, '\n'.join(file.readlines()))
+                self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
+                self.state = BotState.IDLE
+        elif self.state == BotState.HIDDEN_SANTA_WAITING_FILE:
+            with open(self.file_manager(filepath), encoding="utf-8") as file:
+                self.santa_module.initialize_from_str('\n'.join(file.readlines()))
+                self._reply(message, reply=Reply(f'Прочитал! {len(self.santa_module.usernames)} юзеров и {len(self.santa_module.forbidden_pairs)} пар'))
+                self.state = BotState.IDLE
+        else:
+            self._reply(message, reply=Reply(text="Не ожидаю файл... мне пофиг на него"))
+
+    def handle_text(self, message: Message):
         text = message.text
         self.logger.info(f"Message text: '{text}' | {message.id}")
-
         # some commands are independent of current state
         if text.startswith("/send"):
-            if not self.is_admin(message.from_user):
-                await self._reply(message, "У тебя нет полномочий для этого!")
+            if not self.world.is_admin(message.from_user):
+                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
 
             _, chat_id, message_thread_id, text = text.split(maxsplit=3)
-            await self.send_message(chat_id=chat_id, message_thread_id=message_thread_id, text=text)
+            self._send_text_to_any_chat(chat_id=chat_id, message_thread_id=message_thread_id, text=text)
             return
 
         if text.startswith("/start"):
-            await self._reply(message, f'Старт! Твой id: {message.from_user.id}, держу в курсе!')
+            self._reply(message, reply=Reply(text=f'Что тебе от меня надо, {message.from_user.username}'))
             self.state = BotState.IDLE
             return
         elif text.startswith("/learn_text"):
-            if not self.is_admin(message.from_user):
-                await self._reply(message, "У тебя нет полномочий для этого!")
+            if not self.world.is_admin(message.from_user):
+                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.LEARN_TEXT_WAITING_TEXT_ID
-            await self._reply(message, f'Напиши text_id, под которым я запомню этот текст.')
+            self._reply(message, reply=Reply(text=f'Напиши название, под которым я запомню этот текст.'))
             return
         elif text.startswith("/forget_text"):
-            if not self.is_admin(message.from_user):
-                await self._reply(message, "У тебя нет полномочий для этого!")
+            if not self.world.is_admin(message.from_user):
+                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.FORGET_TEXT_WAITING_TEXT_ID
             msg = dedent(
-                f"""Напиши text_id удаляемого текста. Возможные варианты:
+                f"""\
+                Напиши название удаляемого текста. Возможные варианты:
                 {' '.join(self.ngram_talk_module.counts_per_text.keys())}
                 """
             )
-            await self._reply(message, msg)
+            self._reply(message, reply=Reply(text=msg))
             return
         elif text.startswith("/santa_init"):
-            if not self.is_admin(message.from_user):
-                await self._reply(message, "У тебя нет полномочий для этого!")
+            if not self.world.is_admin(message.from_user):
+                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.HIDDEN_SANTA_WAITING_FILE
-            await self._reply(message, f'Пришли текстовый файл с юзерами и запрещенными парами.')
+            self._reply(message, reply=Reply(text=f'Пришли текстовый файл с юзерами и запрещенными парами.'))
             return
         elif text.startswith("/santa_start"):
-            if not self.is_admin(message.from_user):
-                await self._reply(message, "У тебя нет полномочий для этого!")
+            if not self.world.is_admin(message.from_user):
+                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             seed = text.split(maxsplit=1)[1].strip() if len(text.split()) >= 2 else None
             self.santa_module.generate_permutation(seed)
-            await self._reply(message, f"Перестановка сгенерирована! Успехов! seed: '{seed}'")
+            self._reply(message, reply=Reply(text=f"Перестановка сгенерирована! Успехов! seed: '{seed}'"))
+            self.state = BotState.IDLE
             return
         elif text.startswith("/santa"):
             text = self.santa_module.handle_message(message)
-            await self._reply(message, text, hide_text=True)
+            self._reply(message, reply=Reply(text=text), hide_text=True)
+            self.state = BotState.IDLE
             return
 
         if self.state == BotState.IDLE:
             text = self.ngram_talk_module.handle_message(message)
-            await self._reply(message, text)
+            self._reply(message, reply=Reply(text=text))
         elif self.state == BotState.LEARN_TEXT_WAITING_TEXT_ID:
             self.text_id = message.text.split("\n")[0]
             self.state = BotState.LEARN_TEXT_WAITING_TEXT
-            await self._reply(message, f'Напиши сам текст или пришли его txt файлом.')
-        elif self.state == BotState.LEARN_TEXT_WAITING_TEXT:
-            self.ngram_talk_module.learn_text(self.text_id, message.text)
-            await self._reply(message, f'Текст сохранен как {self.text_id}')
-            self.state = BotState.IDLE
+            self._reply(message, reply=Reply(text=f'Пришли текстовый файл с текстом.'))
+        # elif self.state == BotState.LEARN_TEXT_WAITING_TEXT:
+        #     self.ngram_talk_module.learn_text(self.text_id, message.text)
+        #     self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
+        #     self.state = BotState.IDLE
         elif self.state == BotState.FORGET_TEXT_WAITING_TEXT_ID:
             text_id = message.text.split("\n")[0]
             self.ngram_talk_module.forget_text(text_id)
             self.state = BotState.IDLE
-            await self._reply(message, f'Текст {text_id} удален')
+            self._reply(message, reply=Reply(text=f'Текст {text_id} удален'))

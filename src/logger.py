@@ -30,6 +30,23 @@ class Logger(ABC):
         raise NotImplementedError
 
 
+class NoLogger(Logger):
+    def __init__(self):
+        super().__init__()
+
+    def debug(self, msg: str):
+        pass
+
+    def info(self, msg: str):
+        pass
+
+    def warning(self, msg: str):
+        pass
+
+    def error(self, msg: str):
+        pass
+
+
 class BaseLogger(Logger):
     def __init__(self, name: str):
         super().__init__()

@@ -20,7 +20,7 @@ class NGramTalkModule(BaseModule):
         self.counts_per_text: dict[str, dict[tuple[str, ...], dict[str, int]]] = {}
         self.n = n
 
-    def _recalculate_counts(self):
+    def recalculate_counts(self):
         self.ngrams_to_next_word_counts: dict[tuple[str, ...], dict[str, int]] = defaultdict(dict)
 
         for counts in self.counts_per_text.values():
@@ -61,7 +61,7 @@ class NGramTalkModule(BaseModule):
             raise KeyError(f"There is not text with id 'f{text_id}'")
 
         del self.counts_per_text[text_id]
-        self._recalculate_counts()
+        self.recalculate_counts()
 
     def _generate_sentence_from_words_list(
         self,
@@ -131,7 +131,7 @@ class NGramTalkModule(BaseModule):
             }
             for text_id, counts_for_text in counts_per_text_with_tuples_replaced.items()
         }
-        self._recalculate_counts()
+        self.recalculate_counts()
 
     @staticmethod
     def serialize_ngram(ngram: tuple[str, ...]) -> str:
