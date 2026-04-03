@@ -1,0 +1,104 @@
+import logging
+import os
+import random
+from enum import Enum
+from textwrap import dedent
+from pathlib import Path
+import asyncio
+
+import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
+from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
+
+from src.bot import Bot, FileManager
+from src.logger import Logger, DateFileLogger, BaseLogger
+
+
+from base_classes import User, Message, Chat
+from src.bot import Bot, World, Reply
+from src.logger import DateFileLogger
+
+
+def token():
+    return os.getenv("BOT_TOKEN")
+
+
+class TelegramWorld(World):
+    def __init__(self, app: telegram.ext.Application):
+        super().__init__()
+        self.app = app
+
+    async def reply(self, message: Message, reply: Reply):
+        if reply.text:
+            await self.app.bot.send_message(
+                text=reply.text, chat_id=message.chat.id, message_thread_id=message.message_thread_id, reply_to_message_id=message.id,
+            )
+
+    async def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
+        await self.app.bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
+
+    def is_admin(self, user: User) -> bool:
+        return user.id == int(os.getenv("ADMIN_ID"))
+
+
+class TelegramBot:
+    def __init__(self, logger: Logger, dir_path: str | Path = Bot.DEFAULT_DIR_PATH):
+        self.app = ApplicationBuilder().token(token()).build()
+        self.app.add_handler(MessageHandler(None, self.handle_update))
+
+        world = TelegramWorld(app=self.app)
+        self.bot = Bot(dir_path=dir_path, logger=logger, world=world)
+
+    def __enter__(self):
+        self.app.run_polling()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        asyncio.run(self.app.shutdown())
+
+    async def handle_update(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        message: Message | None = None
+        try:
+            if update.message is not None:
+                tg_message = update.message
+                if tg_message.chat.type != "private" and tg_message.reply_to_message and tg_message.reply_to_message.from_user.id != self.app.bot.id:
+                    return
+                user = User(username=tg_message.from_user.username, id=str(tg_message.from_user.id))
+                chat = Chat(type=tg_message.chat.type, title=tg_message.chat.title, id=tg_message.chat.id)
+                message = Message(id=tg_message.id, from_user=user, chat=chat, message_thread_id=tg_message.message_thread_id)
+
+                if tg_message.document is not None:
+                    TMP_TEXT_FILE_NAME: str = "tmp.txt"
+                    file = await tg_message.document.get_file()
+                    self.bot.logger.info(f"Downloading the file {file.file_path} | {tg_message.id}")
+                    saved_path = self.bot.file_manager(TMP_TEXT_FILE_NAME)
+                    with open(saved_path, "wb") as saved:
+                        await file.download_to_memory(saved)
+
+                    message.filepath = TMP_TEXT_FILE_NAME
+                elif tg_message.text is not None:
+                    message.text = tg_message.text
+
+                await self.bot.handle_message(message)
+            else:
+                await self.bot.logger.info(f"No message in update {update.update_id}")
+
+        except Exception as e:
+            err_msg = '\n'.join(e.args)
+            self.bot.logger.warning(err_msg)
+            if update.message:
+                await self.bot.world.reply(message=message, reply=Reply(text="Ошибка!"))
+
+
+def run(dir_path: str | Path = Bot.DEFAULT_DIR_PATH):
+    logger = (
+        DateFileLogger(name="Bot", filename="messages.log")
+        if os.getenv("STAGE") == "PROD"
+        else BaseLogger(name="Bot")
+    )
+    tg_bot = TelegramBot(logger=logger)
+
+    with tg_bot:
+        logger.info("Bot started!")
+
+
+if __name__ == "__main__":
+    run()

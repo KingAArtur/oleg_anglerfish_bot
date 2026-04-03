@@ -47,10 +47,10 @@ class World:
     def __init__(self):
         pass
 
-    def reply(self, message: Message, reply: Reply):
+    async def reply(self, message: Message, reply: Reply):
         raise NotImplementedError
 
-    def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
+    async def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
         raise NotImplementedError
 
     def is_admin(self, user: User) -> bool:
@@ -60,8 +60,9 @@ class World:
 class Bot:
     TMP_TEXT_FILE_NAME: str = "tmp.txt"
     NGRAM_MODULE_SAVE_FILE_NAME: str = "ngram_module_save_file.txt"
+    DEFAULT_DIR_PATH: str = "./files"
 
-    def __init__(self, dir_path: str | Path = "./files", logger: Logger | None = None, world: World | None = None):
+    def __init__(self, dir_path: str | Path = DEFAULT_DIR_PATH, logger: Logger | None = None, world: World | None = None):
         if logger is None:
             logger = BaseLogger(name="Bot")
         self.logger: Logger = logger
@@ -99,7 +100,7 @@ class Bot:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.exit()
 
-    def _reply(self, message: Message, reply: Reply, hide_text: bool = False):
+    async def _reply(self, message: Message, reply: Reply, hide_text: bool = False):
         user_str = message.from_user.username
         chat_str = (
             (message.chat.type or '') + ' ' + (message.chat.title or '') + ' ' + (str(message.chat.id) or '')
@@ -107,21 +108,21 @@ class Bot:
         )
         text_for_log = "<hidden>" if hide_text and reply.text is not None else reply.text
         self.logger.info(f"Replying to user {user_str} in chat {chat_str}: '{text_for_log or reply.sticker or reply.reaction}' | {message.id}")
-        return self.world.reply(message=message, reply=reply)
+        await self.world.reply(message=message, reply=reply)
 
-    def _send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
-        return self.world.send_text_to_any_chat(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
+    async def _send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
+        await self.world.send_text_to_any_chat(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
-    def handle_message(self, message: Message):
+    async def handle_message(self, message: Message):
         user_str = message.from_user.username
         chat_str = (message.chat.type or '') + (message.chat.title or '')
         self.logger.info(f"Got message from user {user_str} in chat {chat_str} | {message.id}")
 
         try:
             if message.filepath:
-                self.handle_file(message)
+                await self.handle_file(message)
             elif message.text:
-                self.handle_text(message)
+                await self.handle_text(message)
             else:
                 random_reaction = random.choice(
                     [
@@ -134,14 +135,14 @@ class Bot:
                         "OK_HAND_SIGN",
                     ]
                 )
-                self.world.reply(message, reply=Reply(reaction=random_reaction))
+                await self.world.reply(message, reply=Reply(reaction=random_reaction))
 
         except Exception as e:
             err_msg = '\n'.join([str(a) for a in e.args])
             self.logger.warning(err_msg)
-            self._reply(message, Reply(text="Ошибка"))
+            await self._reply(message, Reply(text="Ошибка"))
 
-    def handle_file(self, message: Message):
+    async def handle_file(self, message: Message):
         self.logger.info(f"Got file {message.filepath} | {message.id}")
         if not message.filepath:
             return
@@ -151,43 +152,43 @@ class Bot:
         if self.state == BotState.LEARN_TEXT_WAITING_TEXT:
             with open(self.file_manager(filepath), encoding="utf-8") as file:
                 self.ngram_talk_module.learn_text(self.text_id, '\n'.join(file.readlines()))
-                self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
+                await self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
                 self.state = BotState.IDLE
         elif self.state == BotState.HIDDEN_SANTA_WAITING_FILE:
             with open(self.file_manager(filepath), encoding="utf-8") as file:
                 self.santa_module.initialize_from_str('\n'.join(file.readlines()))
-                self._reply(message, reply=Reply(f'Прочитал! {len(self.santa_module.usernames)} юзеров и {len(self.santa_module.forbidden_pairs)} пар'))
+                await self._reply(message, reply=Reply(f'Прочитал! {len(self.santa_module.usernames)} юзеров и {len(self.santa_module.forbidden_pairs)} пар'))
                 self.state = BotState.IDLE
         else:
-            self._reply(message, reply=Reply(text="Не ожидаю файл... мне пофиг на него"))
+            await self._reply(message, reply=Reply(text="Не ожидаю файл... мне пофиг на него"))
 
-    def handle_text(self, message: Message):
+    async def handle_text(self, message: Message):
         text = message.text
         self.logger.info(f"Message text: '{text}' | {message.id}")
         # some commands are independent of current state
         if text.startswith("/send"):
             if not self.world.is_admin(message.from_user):
-                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
+                await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
 
             _, chat_id, message_thread_id, text = text.split(maxsplit=3)
-            self._send_text_to_any_chat(chat_id=chat_id, message_thread_id=message_thread_id, text=text)
+            await self._send_text_to_any_chat(chat_id=chat_id, message_thread_id=message_thread_id, text=text)
             return
 
         if text.startswith("/start"):
-            self._reply(message, reply=Reply(text=f'Что тебе от меня надо, {message.from_user.username}'))
+            await self._reply(message, reply=Reply(text=f'Что тебе от меня надо, {message.from_user.username}'))
             self.state = BotState.IDLE
             return
         elif text.startswith("/learn_text"):
             if not self.world.is_admin(message.from_user):
-                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
+                await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.LEARN_TEXT_WAITING_TEXT_ID
-            self._reply(message, reply=Reply(text=f'Напиши название, под которым я запомню этот текст.'))
+            await self._reply(message, reply=Reply(text=f'Напиши название, под которым я запомню этот текст.'))
             return
         elif text.startswith("/forget_text"):
             if not self.world.is_admin(message.from_user):
-                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
+                await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.FORGET_TEXT_WAITING_TEXT_ID
             msg = dedent(
@@ -196,37 +197,37 @@ class Bot:
                 {' '.join(self.ngram_talk_module.counts_per_text.keys())}
                 """
             )
-            self._reply(message, reply=Reply(text=msg))
+            await self._reply(message, reply=Reply(text=msg))
             return
         elif text.startswith("/santa_init"):
             if not self.world.is_admin(message.from_user):
-                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
+                await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.HIDDEN_SANTA_WAITING_FILE
-            self._reply(message, reply=Reply(text=f'Пришли текстовый файл с юзерами и запрещенными парами.'))
+            await self._reply(message, reply=Reply(text=f'Пришли текстовый файл с юзерами и запрещенными парами.'))
             return
         elif text.startswith("/santa_start"):
             if not self.world.is_admin(message.from_user):
-                self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
+                await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             seed = text.split(maxsplit=1)[1].strip() if len(text.split()) >= 2 else None
             self.santa_module.generate_permutation(seed)
-            self._reply(message, reply=Reply(text=f"Перестановка сгенерирована! Успехов! seed: '{seed}'"))
+            await self._reply(message, reply=Reply(text=f"Перестановка сгенерирована! Успехов! seed: '{seed}'"))
             self.state = BotState.IDLE
             return
         elif text.startswith("/santa"):
             text = self.santa_module.handle_message(message)
-            self._reply(message, reply=Reply(text=text), hide_text=True)
+            await self._reply(message, reply=Reply(text=text), hide_text=True)
             self.state = BotState.IDLE
             return
 
         if self.state == BotState.IDLE:
             text = self.ngram_talk_module.handle_message(message)
-            self._reply(message, reply=Reply(text=text))
+            await self._reply(message, reply=Reply(text=text))
         elif self.state == BotState.LEARN_TEXT_WAITING_TEXT_ID:
             self.text_id = message.text.split("\n")[0]
             self.state = BotState.LEARN_TEXT_WAITING_TEXT
-            self._reply(message, reply=Reply(text=f'Пришли текстовый файл с текстом.'))
+            await self._reply(message, reply=Reply(text=f'Пришли текстовый файл с текстом.'))
         # elif self.state == BotState.LEARN_TEXT_WAITING_TEXT:
         #     self.ngram_talk_module.learn_text(self.text_id, message.text)
         #     self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
@@ -235,4 +236,4 @@ class Bot:
             text_id = message.text.split("\n")[0]
             self.ngram_talk_module.forget_text(text_id)
             self.state = BotState.IDLE
-            self._reply(message, reply=Reply(text=f'Текст {text_id} удален'))
+            await self._reply(message, reply=Reply(text=f'Текст {text_id} удален'))

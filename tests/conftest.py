@@ -11,10 +11,10 @@ class EmptyWorld(World):
     def __init__(self):
         super().__init__()
 
-    def reply(self, message: Message, reply: Reply):
+    async def reply(self, message: Message, reply: Reply):
         pass
 
-    def send_text_to_any_chat(self, text: str, chat_id: int, message_thread_id: int = None):
+    async def send_text_to_any_chat(self, text: str, chat_id: int, message_thread_id: int = None):
         pass
 
     def is_admin(self, user: User) -> bool:

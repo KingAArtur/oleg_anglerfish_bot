@@ -1,10 +1,11 @@
 from base_classes import User, Message, Chat
 from src.bot import Bot, World, Reply
 from src.logger import FileLogger
+import asyncio
 
 
 class ConsoleWorld(World):
-    def reply(self, message: Message, reply: Reply):
+    async def reply(self, message: Message, reply: Reply):
         content = reply.text or reply.sticker or reply.reaction
 
         print(content)
@@ -29,7 +30,7 @@ def run(bot: Bot):
 
                 message.from_user = user
                 message.chat = chat
-                bot.handle_message(message)
+                asyncio.run(bot.handle_message(message))
             except KeyboardInterrupt:
                 break
 
