@@ -1,7 +1,8 @@
+import asyncio
+
 from base_classes import User, Message, Chat
 from src.bot import Bot, World, Reply
 from src.logger import FileLogger
-import asyncio
 
 
 class ConsoleWorld(World):

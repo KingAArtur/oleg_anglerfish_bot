@@ -1,12 +1,10 @@
-import datetime
 import logging
+from datetime import datetime
 from io import BytesIO
-from pathlib import Path
 from textwrap import dedent
-
-import pytest
 from unittest.mock import patch
 
+import pytest
 import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
 from telegram.ext import ApplicationBuilder  # noqa
 
@@ -54,7 +52,7 @@ def create_update(text: str | None = None, is_file: bool = False) -> telegram.Up
     document = telegram.Document(file_id="f", file_unique_id="42") if is_file else None
     return telegram.Update(
         message=telegram.Message(
-            text=text, document=document, chat=tg_chat, date=datetime.datetime.today(), message_id=42, from_user=tg_user,
+            text=text, document=document, chat=tg_chat, date=datetime.today(), message_id=42, from_user=tg_user,
         ),
         update_id=42,
     )

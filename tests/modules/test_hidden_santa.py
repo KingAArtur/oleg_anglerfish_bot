@@ -1,7 +1,7 @@
 import pytest
 from textwrap import dedent
 
-from modules import SantaModule
+from src.modules import SantaModule
 
 
 @pytest.fixture()

@@ -1,6 +1,5 @@
-import pytest
-from unittest.mock import patch
 from textwrap import dedent
+from unittest.mock import patch
 
 from run.console.bot import run
 from src.bot import BotState

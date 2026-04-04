@@ -1,21 +1,14 @@
-import logging
-import os
-import random
-from enum import Enum
-from textwrap import dedent
-from pathlib import Path
 import asyncio
+import os
+from pathlib import Path
 
 import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
 
-from src.bot import Bot, FileManager
-from src.logger import Logger, DateFileLogger, BaseLogger
-
-
 from base_classes import User, Message, Chat
 from src.bot import Bot, World, Reply
 from src.logger import DateFileLogger
+from src.logger import Logger, BaseLogger
 
 
 def token():
@@ -23,18 +16,21 @@ def token():
 
 
 class TelegramWorld(World):
-    def __init__(self, app: telegram.ext.Application):
+    def __init__(self, bot: telegram.Bot):
         super().__init__()
-        self.app = app
+        self.tg_bot: telegram.Bot = bot
 
     async def reply(self, message: Message, reply: Reply):
         if reply.text:
-            await self.app.bot.send_message(
-                text=reply.text, chat_id=message.chat.id, message_thread_id=message.message_thread_id, reply_to_message_id=message.id,
+            await self.tg_bot.send_message(
+                text=reply.text,
+                chat_id=message.chat.id,
+                message_thread_id=message.message_thread_id,
+                reply_to_message_id=message.id,
             )
 
     async def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
-        await self.app.bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
+        await self.tg_bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
     def is_admin(self, user: User) -> bool:
         return str(user.id) == os.getenv("ADMIN_ID")
@@ -45,7 +41,7 @@ class TelegramBot:
         self.app = ApplicationBuilder().token(token()).build()
         self.app.add_handler(MessageHandler(None, self.handle_update))
 
-        world = TelegramWorld(app=self.app)
+        world = TelegramWorld(bot=self.app.bot)
         self.bot = Bot(dir_path=dir_path, logger=logger, world=world)
 
     def __enter__(self):
@@ -59,20 +55,26 @@ class TelegramBot:
         try:
             if update.message is not None:
                 tg_message = update.message
-                if tg_message.chat.type != "private" and tg_message.reply_to_message and tg_message.reply_to_message.from_user.id != self.app.bot.id:
+                if (
+                    tg_message.chat.type != "private"
+                    and tg_message.reply_to_message is not None
+                    and tg_message.reply_to_message.from_user.id != self.app.bot.id
+                ):
                     return
                 user = User(username=tg_message.from_user.username, id=str(tg_message.from_user.id))
                 chat = Chat(type=tg_message.chat.type, title=tg_message.chat.title, id=tg_message.chat.id)
-                message = Message(id=tg_message.id, from_user=user, chat=chat, message_thread_id=tg_message.message_thread_id)
+                message = Message(
+                    id=tg_message.id, from_user=user, chat=chat, message_thread_id=tg_message.message_thread_id,
+                )
 
                 if tg_message.document is not None:
-                    TMP_TEXT_FILE_NAME: str = "tmp.txt"
+                    tmp_filename = "tmp.txt"
                     file = await tg_message.document.get_file()
                     self.bot.logger.info(f"Downloading the file {file.file_path} | {tg_message.id}")
-                    with self.bot.file_manager.open(TMP_TEXT_FILE_NAME, tmp=True, mode="wb", encoding=None) as saved:
+                    with self.bot.file_manager.open(tmp_filename, tmp=True, mode="wb", encoding=None) as saved:
                         await file.download_to_memory(saved)
 
-                    message.filepath = TMP_TEXT_FILE_NAME
+                    message.filepath = tmp_filename
                 elif tg_message.text is not None:
                     message.text = tg_message.text
 
@@ -84,7 +86,7 @@ class TelegramBot:
             err_msg = '\n'.join(e.args)
             self.bot.logger.warning(err_msg)
             if update.message:
-                await self.bot.world.reply(message=message, reply=Reply(text="Ошибка!"))
+                await self.bot.world.reply(message=message, reply=Reply(text="Ошибка! Сори"))
 
 
 def run(dir_path: str | Path = Bot.DEFAULT_DIR_PATH):
@@ -93,7 +95,7 @@ def run(dir_path: str | Path = Bot.DEFAULT_DIR_PATH):
         if os.getenv("STAGE") == "PROD"
         else BaseLogger(name="Bot")
     )
-    tg_bot = TelegramBot(logger=logger)
+    tg_bot = TelegramBot(logger=logger, dir_path=dir_path)
 
     with tg_bot:
         logger.info("Bot started!")

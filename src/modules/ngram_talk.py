@@ -1,11 +1,11 @@
-from collections import defaultdict
-from tqdm import tqdm
-import random
 import json
+import random
+from collections import defaultdict
 
 import nltk
-from src.base_classes import Message
+from tqdm import tqdm
 
+from src.base_classes import Message
 from .base import BaseModule
 
 

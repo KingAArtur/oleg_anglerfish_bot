@@ -1,13 +1,13 @@
 import random
-from enum import Enum
-from textwrap import dedent
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+from textwrap import dedent
 
 from src.base_classes import Message, User
+from src.file_manager import FileManager
 from src.logger import Logger, BaseLogger
 from src.modules import NGramTalkModule, SantaModule
-from src.file_manager import FileManager
 
 
 class BotState(Enum):
@@ -40,7 +40,6 @@ class World:
 
 
 class Bot:
-    TMP_TEXT_FILE_NAME: str = "tmp.txt"
     NGRAM_MODULE_SAVE_FILE_NAME: str = "ngram_module_save_file.txt"
     DEFAULT_DIR_PATH: str = "./files"
 
@@ -66,7 +65,7 @@ class Bot:
         self.santa_module = SantaModule()
 
     def exit(self):
-        """Saving some state before turning off"""
+        """Cleaning up tmp files before turning off"""
         self.logger.info("Shutdown!")
         self.file_manager.cleanup()
 
@@ -76,17 +75,18 @@ class Bot:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.exit()
 
-    async def _reply(self, message: Message, reply: Reply, hide_text: bool = False):
+    async def _reply(self, message: Message, reply: Reply, hide_reply: bool = False):
         user_str = message.from_user.username
         chat_str = (
             (message.chat.type or '') + ' ' + (message.chat.title or '') + ' ' + (str(message.chat.id) or '')
             + ' ' + (str(message.message_thread_id) or '')
         )
-        text_for_log = "<hidden>" if hide_text and reply.text is not None else reply.text
-        self.logger.info(f"Replying to user {user_str} in chat {chat_str}: '{text_for_log or reply.sticker or reply.reaction}' | {message.id}")
+        content_for_log = "<hidden>" if hide_reply else (reply.text or reply.sticker or reply.reaction)
+        self.logger.info(f"Replying to user {user_str} in chat {chat_str}: '{content_for_log}' | {message.id}")
         await self.world.reply(message=message, reply=reply)
 
     async def _send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
+        self.logger.info(f"Sending message to chat {chat_id}: '{text}' | {message_thread_id}")
         await self.world.send_text_to_any_chat(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
     async def handle_message(self, message: Message):
@@ -116,7 +116,15 @@ class Bot:
         except Exception as e:
             err_msg = '\n'.join([str(a) for a in e.args])
             self.logger.warning(err_msg)
-            await self._reply(message, Reply(text="Ошибка"))
+            reply_text = random.choice(
+                [
+                    "Ошибка!",
+                    "Ошибка тупая",
+                    "Я ошибся!",
+                    "Проблемка",
+                ]
+            )
+            await self._reply(message, Reply(text=reply_text))
 
     async def handle_file(self, message: Message):
         self.logger.info(f"Got file {message.filepath} | {message.id}")
@@ -134,6 +142,7 @@ class Bot:
             with self.file_manager.open(Bot.NGRAM_MODULE_SAVE_FILE_NAME, tmp=False, mode="w") as file:
                 file.write(self.ngram_talk_module.serialize_to_text())
             self.state = BotState.IDLE
+
         elif self.state == BotState.HIDDEN_SANTA_WAITING_FILE:
             with self.file_manager.open(filepath, tmp=True) as file:
                 self.santa_module.initialize_from_str('\n'.join(file.readlines()))
@@ -158,8 +167,7 @@ class Bot:
             _, chat_id, message_thread_id, text = text.split(maxsplit=3)
             await self._send_text_to_any_chat(chat_id=chat_id, message_thread_id=message_thread_id, text=text)
             return
-
-        if text.startswith("/start"):
+        elif text.startswith("/start"):
             await self._reply(message, reply=Reply(text=f'Что тебе от меня надо, {message.from_user.username}'))
             self.state = BotState.IDLE
             return
@@ -201,7 +209,7 @@ class Bot:
             return
         elif text.startswith("/santa"):
             text = self.santa_module.handle_message(message)
-            await self._reply(message, reply=Reply(text=text), hide_text=True)
+            await self._reply(message, reply=Reply(text=text), hide_reply=True)
             self.state = BotState.IDLE
             return
 
@@ -212,10 +220,6 @@ class Bot:
             self.text_id = message.text.split("\n")[0]
             self.state = BotState.LEARN_TEXT_WAITING_TEXT
             await self._reply(message, reply=Reply(text=f'Пришли текстовый файл с текстом.'))
-        # elif self.state == BotState.LEARN_TEXT_WAITING_TEXT:
-        #     self.ngram_talk_module.learn_text(self.text_id, message.text)
-        #     self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
-        #     self.state = BotState.IDLE
         elif self.state == BotState.FORGET_TEXT_WAITING_TEXT_ID:
             text_id = message.text.split("\n")[0]
             self.ngram_talk_module.forget_text(text_id)

@@ -1,6 +1,6 @@
-from abc import ABC
-import logging
 import datetime
+import logging
+from abc import ABC
 
 
 def set_handler(logger: logging.Logger, handler: logging.Handler):
