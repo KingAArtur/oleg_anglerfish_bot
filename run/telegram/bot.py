@@ -28,6 +28,12 @@ class TelegramWorld(World):
                 message_thread_id=message.message_thread_id,
                 reply_to_message_id=message.id,
             )
+        elif reply.reaction:
+            await self.tg_bot.set_message_reaction(
+                chat_id=message.chat.id,
+                message_id=message.id,
+                reaction=telegram.constants.ReactionEmoji[reply.reaction]
+            )
 
     async def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
         await self.tg_bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
