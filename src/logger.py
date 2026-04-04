@@ -55,6 +55,9 @@ class BaseLogger(Logger):
         self.logger.setLevel(logging.INFO)
         set_handler(self.logger, logging.StreamHandler())
 
+    def set_level(self, level: int):
+        self.logger.setLevel(level)
+
     def _logger(self):
         return self.logger
 

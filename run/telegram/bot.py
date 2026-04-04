@@ -37,7 +37,7 @@ class TelegramWorld(World):
         await self.app.bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
     def is_admin(self, user: User) -> bool:
-        return user.id == int(os.getenv("ADMIN_ID"))
+        return str(user.id) == os.getenv("ADMIN_ID")
 
 
 class TelegramBot:
