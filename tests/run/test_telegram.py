@@ -35,15 +35,12 @@ class FakeTelegramApp:
 
 
 class FakeTelegramFile:
-    def __init__(self, save_from: str | Path):
-        with open(save_from, "rb") as file_from:
-            self.lines = file_from.readlines()
-
-        self.file_path = save_from
+    def __init__(self, content: str):
+        self.content = content
+        self.file_path = ""
 
     async def download_to_memory(self, file: BytesIO):
-        for line in self.lines:
-            file.write(line)
+        file.write(bytearray(self.content, encoding="utf-8"))
 
 
 @pytest.fixture
@@ -71,8 +68,6 @@ async def test_telegram_bot(tmp_path, app):
         local_user,dog
         """
     )
-    with open(tmp_path / "santa.txt", "w", encoding="utf-8") as file:
-        file.write(santa_info)
 
     with (
         patch.object(ApplicationBuilder, "build") as mock_app_build,
@@ -81,7 +76,7 @@ async def test_telegram_bot(tmp_path, app):
     ):
         mock_app_build.side_effect = lambda: app
         mock_get_file.side_effect = [
-            FakeTelegramFile(tmp_path / "santa.txt"),
+            FakeTelegramFile(content=santa_info),
         ]
         updates = [
             create_update(text="/start"),

@@ -1,4 +1,3 @@
-import os
 import random
 from enum import Enum
 from textwrap import dedent
@@ -7,8 +6,8 @@ from pathlib import Path
 
 from src.base_classes import Message, User
 from src.logger import Logger, BaseLogger
-
-from modules import NGramTalkModule, SantaModule
+from src.modules import NGramTalkModule, SantaModule
+from src.file_manager import FileManager
 
 
 class BotState(Enum):
@@ -17,23 +16,6 @@ class BotState(Enum):
     LEARN_TEXT_WAITING_TEXT = 3
     FORGET_TEXT_WAITING_TEXT_ID = 4
     HIDDEN_SANTA_WAITING_FILE = 5
-
-
-class FileManager:
-    def __init__(self, dir_path: str | Path):
-        if isinstance(dir_path, str):
-            dir_path = Path(dir_path)
-
-        if not dir_path.exists():
-            dir_path.mkdir()
-
-        if dir_path.is_file():
-            raise FileExistsError(p)
-
-        self.dir_path: Path = dir_path
-
-    def __call__(self, file_name: str) -> Path:
-        return self.dir_path / file_name
 
 
 @dataclass
@@ -62,13 +44,11 @@ class Bot:
     NGRAM_MODULE_SAVE_FILE_NAME: str = "ngram_module_save_file.txt"
     DEFAULT_DIR_PATH: str = "./files"
 
-    def __init__(self, dir_path: str | Path = DEFAULT_DIR_PATH, logger: Logger | None = None, world: World | None = None):
+    def __init__(self, world: World, dir_path: str | Path = DEFAULT_DIR_PATH, logger: Logger | None = None):
         if logger is None:
             logger = BaseLogger(name="Bot")
         self.logger: Logger = logger
 
-        if world is None:
-            world = World()
         self.world: World = world
 
         self.state: BotState = BotState.IDLE  # later it should be state per user or group, now its just global
@@ -76,10 +56,11 @@ class Bot:
         self.file_manager = FileManager(dir_path=dir_path)
 
         self.ngram_talk_module: NGramTalkModule = NGramTalkModule(n=3)
-        if os.path.exists(self.file_manager(self.NGRAM_MODULE_SAVE_FILE_NAME)):
-            with open(self.file_manager(self.NGRAM_MODULE_SAVE_FILE_NAME), encoding="utf-8") as file:
+        if self.file_manager.exists(Bot.NGRAM_MODULE_SAVE_FILE_NAME, tmp=False):
+            with self.file_manager.open(Bot.NGRAM_MODULE_SAVE_FILE_NAME, tmp=False) as file:
                 text = "\n".join(file.readlines())
             self.ngram_talk_module.deserialize_from_text(text)
+
         self.text_id: str = ""
 
         self.santa_module = SantaModule()
@@ -87,12 +68,7 @@ class Bot:
     def exit(self):
         """Saving some state before turning off"""
         self.logger.info("Shutdown!")
-        if os.path.exists(self.file_manager(self.TMP_TEXT_FILE_NAME)):
-            os.remove(self.file_manager(self.TMP_TEXT_FILE_NAME))
-
-        ngram_module_serialized = self.ngram_talk_module.serialize_to_text()
-        with open(self.file_manager(self.NGRAM_MODULE_SAVE_FILE_NAME), "w", encoding="utf-8") as file:
-            file.write(ngram_module_serialized)
+        self.file_manager.cleanup()
 
     def __enter__(self):
         return self
@@ -150,15 +126,23 @@ class Bot:
         filepath = message.filepath
 
         if self.state == BotState.LEARN_TEXT_WAITING_TEXT:
-            with open(self.file_manager(filepath), encoding="utf-8") as file:
+            with self.file_manager.open(filepath, tmp=True) as file:
                 self.ngram_talk_module.learn_text(self.text_id, '\n'.join(file.readlines()))
-                await self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
-                self.state = BotState.IDLE
+
+            await self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
+
+            with self.file_manager.open(Bot.NGRAM_MODULE_SAVE_FILE_NAME, tmp=False, mode="w") as file:
+                file.write(self.ngram_talk_module.serialize_to_text())
+            self.state = BotState.IDLE
         elif self.state == BotState.HIDDEN_SANTA_WAITING_FILE:
-            with open(self.file_manager(filepath), encoding="utf-8") as file:
+            with self.file_manager.open(filepath, tmp=True) as file:
                 self.santa_module.initialize_from_str('\n'.join(file.readlines()))
-                await self._reply(message, reply=Reply(f'Прочитал! {len(self.santa_module.usernames)} юзеров и {len(self.santa_module.forbidden_pairs)} пар'))
-                self.state = BotState.IDLE
+
+            reply_txt = (
+                f'Прочитал! {len(self.santa_module.usernames)} юзеров и {len(self.santa_module.forbidden_pairs)} пар'
+            )
+            await self._reply(message, reply=Reply(text=reply_txt))
+            self.state = BotState.IDLE
         else:
             await self._reply(message, reply=Reply(text="Не ожидаю файл... мне пофиг на него"))
 

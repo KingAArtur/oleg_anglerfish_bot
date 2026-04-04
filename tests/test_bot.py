@@ -234,7 +234,7 @@ async def test_file_learn_text_waiting_text(bot, tmp_path):
     bot.text_id = text_id
     assert text_id not in bot.ngram_talk_module.counts_per_text
 
-    with open(tmp_path / "some_text.txt", "w", encoding="utf-8") as file:
+    with open(tmp_path / "tmp" / "some_text.txt", "w", encoding="utf-8") as file:
         file.write("Cryo driller is nice")
 
     message = Message(filepath="some_text.txt")
@@ -259,7 +259,7 @@ async def test_file_hidden_santa_waiting_file(bot, tmp_path):
         """
     )
 
-    with open(tmp_path / "some_text.txt", "w", encoding="utf-8") as file:
+    with open(tmp_path / "tmp" / "some_text.txt", "w", encoding="utf-8") as file:
         file.write(santa_info)
 
     message = Message(filepath="some_text.txt")

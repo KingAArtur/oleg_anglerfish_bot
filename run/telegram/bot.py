@@ -69,8 +69,7 @@ class TelegramBot:
                     TMP_TEXT_FILE_NAME: str = "tmp.txt"
                     file = await tg_message.document.get_file()
                     self.bot.logger.info(f"Downloading the file {file.file_path} | {tg_message.id}")
-                    saved_path = self.bot.file_manager(TMP_TEXT_FILE_NAME)
-                    with open(saved_path, "wb") as saved:
+                    with self.bot.file_manager.open(TMP_TEXT_FILE_NAME, tmp=True, mode="wb", encoding=None) as saved:
                         await file.download_to_memory(saved)
 
                     message.filepath = TMP_TEXT_FILE_NAME

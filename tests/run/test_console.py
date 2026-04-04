@@ -13,7 +13,7 @@ def test_console_bot(bot, tmp_path):
         local_user,dog
         """
     )
-    with open(tmp_path / "santa.txt", "w", encoding="utf-8") as file:
+    with open(tmp_path / "tmp" / "santa.txt", "w", encoding="utf-8") as file:
         file.write(santa_info)
 
     with patch("builtins.input") as patched_input, patch.object(bot.world, "reply") as patched_reply:
