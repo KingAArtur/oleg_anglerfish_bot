@@ -27,6 +27,28 @@ class Reply:
     reaction: str | None = None
 
 
+class TextCaseChanger:
+    def __init__(self, chance_random_case: float, chance_upper_case: float):
+        self.chance_random_case = chance_random_case
+        self.chance_upper_case = chance_upper_case
+
+    def process_text(self, text: str):
+        text_case = random.choices(
+            ["normal", "upper", "random"],
+            weights=[
+                1 - self.chance_random_case - self.chance_upper_case,
+                self.chance_upper_case,
+                self.chance_random_case,
+            ],
+        )[0]
+        if text_case == "upper":
+            text = text.upper()
+        elif text_case == "random":
+            text = ''.join([ch.upper() if random.random() < 0.5 else ch.lower() for ch in text])
+
+        return text
+
+
 class World:
     def __init__(self):
         pass
@@ -46,7 +68,13 @@ class Bot:
     SWEARS_SAVE_FILE_NAME: str = "swears_save_file.txt"
     DEFAULT_DIR_PATH: str = "./files"
 
-    def __init__(self, world: World, dir_path: str | Path = DEFAULT_DIR_PATH, logger: Logger | None = None):
+    def __init__(
+        self,
+        world: World, dir_path: str | Path = DEFAULT_DIR_PATH,
+        logger: Logger | None = None,
+        text_case_changer: TextCaseChanger | None = None,
+        chance_send_sticker: float = 0.2,
+    ):
         if logger is None:
             logger = BaseLogger(name="Bot")
         self.logger: Logger = logger
@@ -74,6 +102,12 @@ class Bot:
         self.text_id: str = ""
 
         self.santa_module = SantaModule()
+
+        self.chance_send_sticker: float = chance_send_sticker
+
+        self.text_case_changer = TextCaseChanger(chance_random_case=0.1, chance_upper_case=0.1)
+        if text_case_changer is not None:
+            self.text_case_changer = text_case_changer
 
     def exit(self):
         """Cleaning up tmp files before turning off"""
@@ -246,6 +280,7 @@ class Bot:
 
         if self.state == BotState.IDLE:
             text = self.talk_module.handle_message(message)
+            text = self.text_case_changer.process_text(text)
             await self._reply(message, reply=Reply(text=text))
         elif self.state == BotState.LEARN_TEXT_WAITING_TEXT_ID:
             self.text_id = message.text.split("\n")[0]

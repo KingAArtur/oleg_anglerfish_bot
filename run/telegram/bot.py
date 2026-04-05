@@ -6,7 +6,7 @@ import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
 
 from base_classes import User, Message, Chat
-from src.bot import Bot, World, Reply
+from src.bot import Bot, World, Reply, TextCaseChanger
 from src.logger import DateFileLogger
 from src.logger import Logger, BaseLogger
 
@@ -43,12 +43,17 @@ class TelegramWorld(World):
 
 
 class TelegramBot:
-    def __init__(self, logger: Logger, dir_path: str | Path = Bot.DEFAULT_DIR_PATH):
+    def __init__(
+        self,
+        logger: Logger,
+        dir_path: str | Path = Bot.DEFAULT_DIR_PATH,
+        text_case_changer: TextCaseChanger | None = None,
+    ):
         self.app = ApplicationBuilder().token(token()).build()
         self.app.add_handler(MessageHandler(None, self.handle_update))
 
         world = TelegramWorld(bot=self.app.bot)
-        self.bot = Bot(dir_path=dir_path, logger=logger, world=world)
+        self.bot = Bot(dir_path=dir_path, logger=logger, world=world, text_case_changer=text_case_changer)
 
     def __enter__(self):
         self.app.run_polling()

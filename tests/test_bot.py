@@ -1,10 +1,11 @@
-import pytest
-from unittest.mock import patch
+from collections import defaultdict
 from textwrap import dedent
+from unittest.mock import patch
+
+import pytest
 
 from base_classes import Message
-from src.bot import Reply, BotState, Bot
-
+from src.bot import Reply, BotState, Bot, TextCaseChanger
 
 NO_PERMISSION_TEXT = "У тебя нет полномочий для этого!"
 
@@ -358,3 +359,31 @@ async def test_talk_module(bot, tmp_path):
     new_bot = Bot(world=bot.world, dir_path=tmp_path)
     assert new_bot.talk_module.swear_replacer.tag_to_swears.keys() == bot.talk_module.swear_replacer.tag_to_swears.keys()
     assert new_bot.talk_module.ngram_generator.counts_per_text.keys() == bot.talk_module.ngram_generator.counts_per_text.keys()
+
+
+@pytest.mark.asyncio
+async def test_text_case_changer(bot):
+    bot.text_case_changer = TextCaseChanger(chance_random_case=0.25, chance_upper_case=0.35)
+    txt = "a" * 100
+
+    n = 1000
+    results = defaultdict(int)
+    with (patch.object(bot.world, "reply") as mock_reply):
+        for _ in range(n):
+            await bot.handle_message(Message(text=txt))
+
+    for mock_call in mock_reply.mock_calls:
+        reply_txt = mock_call.kwargs["reply"].text
+
+        if "a" in reply_txt and "A" in reply_txt:
+            results["random"] += 1
+        elif "a" in reply_txt:
+            results["default"] += 1
+        elif "A" in reply_txt:
+            results["upper"] += 1
+
+    assert len(mock_reply.mock_calls) == n
+    assert results["default"] + results["random"] + results["upper"] == n
+    assert abs(results["default"] / n - 0.4) < 0.1
+    assert abs(results["random"] / n - 0.25) < 0.05
+    assert abs(results["upper"] / n - 0.35) < 0.05

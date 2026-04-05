@@ -1,9 +1,10 @@
 import logging
-import pytest
 from textwrap import dedent
 
+import pytest
+
 from base_classes import User, Message
-from src.bot import Bot, Reply, World
+from src.bot import Bot, Reply, World, TextCaseChanger
 from src.logger import BaseLogger
 
 
@@ -31,7 +32,12 @@ def world() -> EmptyWorld:
 def bot(world, tmp_path) -> Bot:
     logger = BaseLogger(name="Bot")
     logger.logger.setLevel(logging.WARNING)
-    bot = Bot(dir_path=tmp_path, world=world, logger=logger)
+
+    text_case_changer = TextCaseChanger(chance_random_case=0.0, chance_upper_case=0.0)
+
+    bot = Bot(
+        dir_path=tmp_path, world=world, logger=logger, chance_send_sticker=0.0, text_case_changer=text_case_changer,
+    )
     bot.talk_module.ngram_generator.counts_per_text = {
         "text_first": {
             ("engineer",): {
