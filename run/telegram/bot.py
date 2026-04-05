@@ -68,6 +68,7 @@ class TelegramBot:
         asyncio.run(self.app.shutdown())
 
     async def handle_update(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        self.bot.logger.info(f"Got update! | {update.update_id}")
         message: Message | None = None
         try:
             if update.message is not None:
@@ -75,6 +76,7 @@ class TelegramBot:
                 if (
                     tg_message.chat.type != "private"
                     and tg_message.reply_to_message is not None
+                    and tg_message.reply_to_message.forum_topic_created is None
                     and tg_message.reply_to_message.from_user.id != self.app.bot.id
                 ):
                     return
