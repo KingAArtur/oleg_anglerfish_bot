@@ -32,7 +32,7 @@ def bot(world, tmp_path) -> Bot:
     logger = BaseLogger(name="Bot")
     logger.logger.setLevel(logging.WARNING)
     bot = Bot(dir_path=tmp_path, world=world, logger=logger)
-    bot.ngram_talk_module.counts_per_text = {
+    bot.talk_module.ngram_generator.counts_per_text = {
         "text_first": {
             ("engineer",): {
                 "turret": 1,
@@ -40,7 +40,7 @@ def bot(world, tmp_path) -> Bot:
         },
         "text_second": dict(),
     }
-    bot.ngram_talk_module.recalculate_counts()
+    bot.talk_module.ngram_generator.recalculate_counts()
     santa_info = dedent(
         """\
         Driller,Engineer,Gunner,Scout

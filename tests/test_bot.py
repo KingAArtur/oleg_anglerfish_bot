@@ -3,7 +3,7 @@ from unittest.mock import patch
 from textwrap import dedent
 
 from base_classes import Message
-from src.bot import Reply, BotState
+from src.bot import Reply, BotState, Bot
 
 
 NO_PERMISSION_TEXT = "У тебя нет полномочий для этого!"
@@ -30,6 +30,7 @@ async def test_use_reaction_if_no_file_no_text(bot):
     [
         "send",
         "learn_text",
+        "learn_swears",
         "forget_text",
         "santa_init",
         "santa_start",
@@ -93,6 +94,23 @@ async def test_command_learn_text(bot):
     )
 
     assert bot.state == BotState.LEARN_TEXT_WAITING_TEXT_ID
+
+
+@pytest.mark.asyncio
+async def test_command_learn_swears(bot):
+    message = Message(text="/learn_swears")
+
+    assert bot.state == BotState.IDLE
+
+    with (patch.object(bot.world, "reply") as mock_reply):
+        await bot.handle_message(message)
+
+    mock_reply.assert_called_once_with(
+        message=message,
+        reply=Reply(text="Пришли текстовый файл со словами."),
+    )
+
+    assert bot.state == BotState.LEARN_SWEARS_WAITING_TEXT
 
 
 @pytest.mark.asyncio
@@ -223,7 +241,7 @@ async def test_forget_text_waiting_text_id(bot):
     expected_reply_text = f"Текст {text_id} удален"
     mock_reply.assert_called_once_with(message=message, reply=Reply(text=expected_reply_text))
 
-    assert list(bot.ngram_talk_module.counts_per_text.keys()) == ["text_second"]
+    assert list(bot.talk_module.ngram_generator.counts_per_text.keys()) == ["text_second"]
     assert bot.state == BotState.IDLE
 
 
@@ -232,7 +250,7 @@ async def test_file_learn_text_waiting_text(bot, tmp_path):
     bot.state = BotState.LEARN_TEXT_WAITING_TEXT
     text_id = "text_third"
     bot.text_id = text_id
-    assert text_id not in bot.ngram_talk_module.counts_per_text
+    assert text_id not in bot.talk_module.ngram_generator.counts_per_text
 
     with open(tmp_path / "tmp" / "some_text.txt", "w", encoding="utf-8") as file:
         file.write("Cryo driller is nice")
@@ -242,10 +260,29 @@ async def test_file_learn_text_waiting_text(bot, tmp_path):
     with (patch.object(bot.world, "reply") as mock_reply):
         await bot.handle_message(message)
 
-    expected_reply_text = f"Текст сохранен как {text_id}"
+    expected_reply_text = f"Текст сохранен как '{text_id}', 4 слов."
     mock_reply.assert_called_once_with(message=message, reply=Reply(text=expected_reply_text))
 
-    assert text_id in bot.ngram_talk_module.counts_per_text
+    assert text_id in bot.talk_module.ngram_generator.counts_per_text
+    assert bot.state == BotState.IDLE
+
+
+@pytest.mark.asyncio
+async def test_file_learn_swears_waiting_text(bot, tmp_path):
+    bot.state = BotState.LEARN_SWEARS_WAITING_TEXT
+
+    with open(tmp_path / "tmp" / "some_text.txt", "w", encoding="utf-8") as file:
+        file.write("chicken\ndog")
+
+    message = Message(filepath="some_text.txt")
+
+    with (patch.object(bot.world, "reply") as mock_reply):
+        await bot.handle_message(message)
+
+    expected_reply_text = f"Прочитано 2 слов!"
+    mock_reply.assert_called_once_with(message=message, reply=Reply(text=expected_reply_text))
+
+    assert ["chicken", "dog"] in bot.talk_module.swear_replacer.tag_to_swears.values()
     assert bot.state == BotState.IDLE
 
 
@@ -287,3 +324,37 @@ async def test_file_is_not_expected(bot):
     mock_reply.assert_called_once_with(message=message, reply=Reply(text=expected_reply_text))
 
     assert bot.state == BotState.IDLE
+
+
+@pytest.mark.asyncio
+async def test_talk_module(bot, tmp_path):
+    with open(tmp_path / "tmp" / "swears.txt", "w", encoding="utf-8") as file:
+        file.write("курица\nелку")
+
+    with open(tmp_path / "tmp" / "ngrams.txt", "w", encoding="utf-8") as file:
+        file.write("собака упала на улицу")
+
+    bot.talk_module.swear_replacer.chance_to_replace = 1.0
+    bot.talk_module.swear_replacer.short_swear_relative_chance = None
+
+    with (patch.object(bot.world, "reply") as mock_reply):
+        await bot.handle_message(Message(text="/learn_swears"))
+        await bot.handle_message(Message(filepath="swears.txt"))
+        await bot.handle_message(Message(text="/learn_text"))
+        await bot.handle_message(Message(text="first"))
+        await bot.handle_message(Message(filepath="ngrams.txt"))
+        await bot.handle_message(Message(text="собака"))
+
+    assert len(mock_reply.mock_calls) == 6
+
+    mock_call_last = mock_reply.mock_calls[-1]
+    reply_text = mock_call_last.kwargs["reply"].text
+    expected_reply_text = f"курица упала на елку?"
+    assert reply_text == expected_reply_text
+
+    assert bot.state == BotState.IDLE
+
+    # checking that loading from files working
+    new_bot = Bot(world=bot.world, dir_path=tmp_path)
+    assert new_bot.talk_module.swear_replacer.tag_to_swears.keys() == bot.talk_module.swear_replacer.tag_to_swears.keys()
+    assert new_bot.talk_module.ngram_generator.counts_per_text.keys() == bot.talk_module.ngram_generator.counts_per_text.keys()

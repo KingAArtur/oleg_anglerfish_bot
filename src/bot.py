@@ -7,7 +7,8 @@ from textwrap import dedent
 from src.base_classes import Message, User
 from src.file_manager import FileManager
 from src.logger import Logger, BaseLogger
-from src.modules import NGramTalkModule, SantaModule
+from src.modules import TalkModule, SwearReplacer, NGramGenerator, SantaModule
+from src.modules.talk.base import tokenize
 
 
 class BotState(Enum):
@@ -16,6 +17,7 @@ class BotState(Enum):
     LEARN_TEXT_WAITING_TEXT = 3
     FORGET_TEXT_WAITING_TEXT_ID = 4
     HIDDEN_SANTA_WAITING_FILE = 5
+    LEARN_SWEARS_WAITING_TEXT = 6
 
 
 @dataclass
@@ -40,7 +42,8 @@ class World:
 
 
 class Bot:
-    NGRAM_MODULE_SAVE_FILE_NAME: str = "ngram_module_save_file.txt"
+    NGRAM_SAVE_FILE_NAME: str = "ngram_save_file.txt"
+    SWEARS_SAVE_FILE_NAME: str = "swears_save_file.txt"
     DEFAULT_DIR_PATH: str = "./files"
 
     def __init__(self, world: World, dir_path: str | Path = DEFAULT_DIR_PATH, logger: Logger | None = None):
@@ -54,11 +57,19 @@ class Bot:
 
         self.file_manager = FileManager(dir_path=dir_path)
 
-        self.ngram_talk_module: NGramTalkModule = NGramTalkModule(n=3)
-        if self.file_manager.exists(Bot.NGRAM_MODULE_SAVE_FILE_NAME, tmp=False):
-            with self.file_manager.open(Bot.NGRAM_MODULE_SAVE_FILE_NAME, tmp=False) as file:
+        ngram_generator = NGramGenerator(n=3)
+        if self.file_manager.exists(Bot.NGRAM_SAVE_FILE_NAME, tmp=False):
+            with self.file_manager.open(Bot.NGRAM_SAVE_FILE_NAME, tmp=False) as file:
                 text = "\n".join(file.readlines())
-            self.ngram_talk_module.deserialize_from_text(text)
+            ngram_generator = NGramGenerator.deserialize_from_text(text)
+
+        swear_replacer = SwearReplacer(chance_to_replace=0.2, short_swear_max_len=7, short_swear_relative_chance=0.8)
+        if self.file_manager.exists(Bot.SWEARS_SAVE_FILE_NAME, tmp=False):
+            with self.file_manager.open(Bot.SWEARS_SAVE_FILE_NAME, tmp=False) as file:
+                text = "\n".join(file.readlines())
+            swear_replacer = SwearReplacer.deserialize_from_text(text)
+
+        self.talk_module: TalkModule = TalkModule(ngram_generator=ngram_generator, swear_replacer=swear_replacer)
 
         self.text_id: str = ""
 
@@ -135,12 +146,25 @@ class Bot:
 
         if self.state == BotState.LEARN_TEXT_WAITING_TEXT:
             with self.file_manager.open(filepath, tmp=True) as file:
-                self.ngram_talk_module.learn_text(self.text_id, '\n'.join(file.readlines()))
+                words = tokenize(' '.join(file.readlines()))
+            self.talk_module.ngram_generator.learn_text(self.text_id, words)
 
-            await self._reply(message, reply=Reply(text=f'Текст сохранен как {self.text_id}'))
+            await self._reply(message, reply=Reply(text=f"Текст сохранен как '{self.text_id}', {len(words)} слов."))
 
-            with self.file_manager.open(Bot.NGRAM_MODULE_SAVE_FILE_NAME, tmp=False, mode="w") as file:
-                file.write(self.ngram_talk_module.serialize_to_text())
+            with self.file_manager.open(Bot.NGRAM_SAVE_FILE_NAME, tmp=False, mode="w") as file:
+                file.write(self.talk_module.ngram_generator.serialize_to_text())
+            self.state = BotState.IDLE
+
+        elif self.state == BotState.LEARN_SWEARS_WAITING_TEXT:
+            with self.file_manager.open(filepath, tmp=True) as file:
+                words = [line.strip() for line in file.readlines() if ' ' not in line]
+            self.talk_module.swear_replacer.learn_from_list(words)
+
+            n_words = sum([len(ws) for ws in self.talk_module.swear_replacer.tag_to_swears.values()])
+            await self._reply(message, reply=Reply(text=f'Прочитано {n_words} слов!'))
+
+            with self.file_manager.open(Bot.SWEARS_SAVE_FILE_NAME, tmp=False, mode="w") as file:
+                file.write(self.talk_module.swear_replacer.serialize_to_text())
             self.state = BotState.IDLE
 
         elif self.state == BotState.HIDDEN_SANTA_WAITING_FILE:
@@ -178,6 +202,13 @@ class Bot:
             self.state = BotState.LEARN_TEXT_WAITING_TEXT_ID
             await self._reply(message, reply=Reply(text=f'Напиши название, под которым я запомню этот текст.'))
             return
+        elif text.startswith("/learn_swears"):
+            if not self.world.is_admin(message.from_user):
+                await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
+                return
+            self.state = BotState.LEARN_SWEARS_WAITING_TEXT
+            await self._reply(message, reply=Reply(text=f'Пришли текстовый файл со словами.'))
+            return
         elif text.startswith("/forget_text"):
             if not self.world.is_admin(message.from_user):
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
@@ -186,7 +217,7 @@ class Bot:
             msg = dedent(
                 f"""\
                 Напиши название удаляемого текста. Возможные варианты:
-                {' '.join(self.ngram_talk_module.counts_per_text.keys())}
+                {' '.join(self.talk_module.ngram_generator.counts_per_text.keys())}
                 """
             )
             await self._reply(message, reply=Reply(text=msg))
@@ -214,7 +245,7 @@ class Bot:
             return
 
         if self.state == BotState.IDLE:
-            text = self.ngram_talk_module.handle_message(message)
+            text = self.talk_module.handle_message(message)
             await self._reply(message, reply=Reply(text=text))
         elif self.state == BotState.LEARN_TEXT_WAITING_TEXT_ID:
             self.text_id = message.text.split("\n")[0]
@@ -222,6 +253,6 @@ class Bot:
             await self._reply(message, reply=Reply(text=f'Пришли текстовый файл с текстом.'))
         elif self.state == BotState.FORGET_TEXT_WAITING_TEXT_ID:
             text_id = message.text.split("\n")[0]
-            self.ngram_talk_module.forget_text(text_id)
+            self.talk_module.ngram_generator.forget_text(text_id)
             self.state = BotState.IDLE
             await self._reply(message, reply=Reply(text=f'Текст {text_id} удален'))
