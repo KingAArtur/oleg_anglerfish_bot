@@ -5,24 +5,20 @@ from unittest.mock import patch
 import pytest
 
 from base_classes import Message
-from src.bot import Reply, BotState, Bot, TextCaseChanger
+from src.bot import Reply, BotState, Bot, BotSettings
 
 NO_PERMISSION_TEXT = "У тебя нет полномочий для этого!"
 
 
 @pytest.mark.asyncio
-async def test_use_reaction_if_no_file_no_text(bot):
+async def test_use_reaction_if_empty_message(bot):
+    bot.reactions = ["smiling"]
     message = Message()
 
     with patch.object(bot.world, "reply") as mock_reply:
         await bot.handle_message(message)
 
-    mock_reply.assert_called_once()
-
-    reply = mock_reply.mock_calls[0].kwargs["reply"]
-    assert reply.text is None
-    assert reply.sticker is None
-    assert reply.reaction is not None
+    mock_reply.assert_called_once_with(message=message, reply=Reply(reaction="smiling"))
 
 
 @pytest.mark.asyncio
@@ -363,7 +359,9 @@ async def test_talk_module(bot, tmp_path):
 
 @pytest.mark.asyncio
 async def test_text_case_changer(bot):
-    bot.text_case_changer = TextCaseChanger(chance_random_case=0.25, chance_upper_case=0.35)
+    bot.text_case_changer.chance_random_case = 0.25
+    bot.text_case_changer.chance_upper_case = 0.35
+
     txt = "a" * 100
 
     n = 1000
@@ -387,3 +385,57 @@ async def test_text_case_changer(bot):
     assert abs(results["default"] / n - 0.4) < 0.1
     assert abs(results["random"] / n - 0.25) < 0.05
     assert abs(results["upper"] / n - 0.35) < 0.05
+
+
+@pytest.mark.asyncio
+async def test_send_stickers(bot):
+    bot.stickers = ["sticker_with_cat"]
+    bot.chance_send_sticker = 1.0
+
+    with (patch.object(bot.world, "reply") as mock_reply):
+        await bot.handle_message(message=Message(sticker="omg_sticker"))
+        await bot.handle_message(message=Message(text="A"))
+
+    assert len(mock_reply.mock_calls) == 3
+
+    assert mock_reply.mock_calls[0].kwargs["reply"] == Reply(sticker="sticker_with_cat")
+    assert mock_reply.mock_calls[2].kwargs["reply"] == Reply(sticker="sticker_with_cat")
+
+
+@pytest.mark.asyncio
+async def test_bot_settings(world, tmp_path):
+    settings_str = dedent(
+        """\
+        {
+            "stickers": [
+                "omg_sticker",
+                "omg_sticker2"
+            ],
+            "reactions": [
+                "omg_reaction",
+                "omg_reaction2"
+            ],
+            "chance_talk_send_sticker": 0.2,
+            "chance_talk_random_case": 0.1,
+            "chance_talk_upper_case": 0.1,
+            "chance_talk_replace_to_swear": 0.2,
+            
+            "short_swear_max_length": 7,
+            "short_swear_relative_chance": 0.8,
+            
+            "ngram_generator_n": 5
+        }
+        """
+    )
+    bot = Bot(world=world, dir_path=tmp_path, bot_settings=BotSettings.from_str(settings_str))
+
+    assert bot.stickers == ["omg_sticker", "omg_sticker2"]
+    assert bot.reactions == ["omg_reaction", "omg_reaction2"]
+
+    assert bot.chance_send_sticker == 0.2
+    assert bot.text_case_changer.chance_random_case == 0.1
+    assert bot.text_case_changer.chance_upper_case == 0.1
+    assert bot.talk_module.swear_replacer.chance_to_replace == 0.2
+    assert bot.talk_module.swear_replacer.short_swear_max_len == 7
+    assert bot.talk_module.swear_replacer.short_swear_relative_chance == 0.8
+    assert bot.talk_module.ngram_generator.n == 5

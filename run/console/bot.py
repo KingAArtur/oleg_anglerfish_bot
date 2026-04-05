@@ -1,7 +1,8 @@
 import asyncio
+import os
 
 from base_classes import User, Message, Chat
-from src.bot import Bot, World, Reply
+from src.bot import Bot, World, Reply, BotSettings
 from src.logger import FileLogger
 
 
@@ -37,5 +38,15 @@ def run(bot: Bot):
 
 
 if __name__ == "__main__":
-    bot = Bot(logger=FileLogger(name="Bot", filename="local.log"), world=ConsoleWorld())
+    settings = None
+    config_filepath = os.getenv("CONFIG")
+    if config_filepath:
+        print(f"Trying to read {config_filepath}")
+        with open(config_filepath, encoding="utf-8") as file:
+            content = file.read()
+        settings = BotSettings.from_str(content)
+        print(f"Read config succesfully!")
+
+    bot = Bot(logger=FileLogger(name="Bot", filename="local.log"), world=ConsoleWorld(), bot_settings=settings)
+    print(f"Starting...")
     run(bot)

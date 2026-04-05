@@ -1,8 +1,9 @@
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from textwrap import dedent
+import json
 
 from src.base_classes import Message, User
 from src.file_manager import FileManager
@@ -49,6 +50,42 @@ class TextCaseChanger:
         return text
 
 
+@dataclass
+class BotSettings:
+    stickers: list[str] = field(default_factory=lambda: [])
+    reactions: list[str] = field(default_factory=lambda: [])
+
+    chance_talk_send_sticker: float = 0.0
+    chance_talk_random_case: float = 0.0
+    chance_talk_upper_case: float = 0.0
+    chance_talk_replace_to_swear: float = 0.0
+
+    short_swear_max_length: int = 7
+    short_swear_relative_chance: float = 1.0
+
+    ngram_generator_n: int = 3
+
+    @staticmethod
+    def from_str(text: str) -> "BotSettings":
+        settings_dict = json.loads(text)
+        settings = BotSettings()
+
+        settings.stickers = settings_dict["stickers"]
+        settings.reactions = settings_dict["reactions"]
+
+        settings.chance_talk_send_sticker = settings_dict["chance_talk_send_sticker"]
+        settings.chance_talk_random_case = settings_dict["chance_talk_random_case"]
+        settings.chance_talk_upper_case = settings_dict["chance_talk_upper_case"]
+        settings.chance_talk_replace_to_swear = settings_dict["chance_talk_replace_to_swear"]
+
+        settings.short_swear_max_length = settings_dict["short_swear_max_length"]
+        settings.short_swear_relative_chance = settings_dict["short_swear_relative_chance"]
+
+        settings.ngram_generator_n = settings_dict["ngram_generator_n"]
+
+        return settings
+
+
 class World:
     def __init__(self):
         pass
@@ -72,9 +109,10 @@ class Bot:
         self,
         world: World, dir_path: str | Path = DEFAULT_DIR_PATH,
         logger: Logger | None = None,
-        text_case_changer: TextCaseChanger | None = None,
-        chance_send_sticker: float = 0.2,
+        bot_settings: BotSettings | None = None,
     ):
+        settings: BotSettings = BotSettings() if bot_settings is None else bot_settings
+
         if logger is None:
             logger = BaseLogger(name="Bot")
         self.logger: Logger = logger
@@ -85,17 +123,26 @@ class Bot:
 
         self.file_manager = FileManager(dir_path=dir_path)
 
-        ngram_generator = NGramGenerator(n=3)
+        ngram_generator = NGramGenerator(n=settings.ngram_generator_n)
         if self.file_manager.exists(Bot.NGRAM_SAVE_FILE_NAME, tmp=False):
             with self.file_manager.open(Bot.NGRAM_SAVE_FILE_NAME, tmp=False) as file:
                 text = "\n".join(file.readlines())
             ngram_generator = NGramGenerator.deserialize_from_text(text)
+            self.logger.info("NGram save file found, ignoring 'ngram_generator_n' from config")
 
-        swear_replacer = SwearReplacer(chance_to_replace=0.2, short_swear_max_len=7, short_swear_relative_chance=0.8)
+        swear_replacer = SwearReplacer(
+            chance_to_replace=settings.chance_talk_replace_to_swear,
+            short_swear_max_len=settings.short_swear_max_length,
+            short_swear_relative_chance=settings.short_swear_relative_chance,
+        )
         if self.file_manager.exists(Bot.SWEARS_SAVE_FILE_NAME, tmp=False):
             with self.file_manager.open(Bot.SWEARS_SAVE_FILE_NAME, tmp=False) as file:
                 text = "\n".join(file.readlines())
             swear_replacer = SwearReplacer.deserialize_from_text(text)
+            self.logger.info("Swear save file found, ignoring 'short_swear_max_length' from config")
+
+            swear_replacer.chance_to_replace = settings.chance_talk_replace_to_swear
+            swear_replacer.short_swear_relative_chance = settings.short_swear_relative_chance
 
         self.talk_module: TalkModule = TalkModule(ngram_generator=ngram_generator, swear_replacer=swear_replacer)
 
@@ -103,11 +150,15 @@ class Bot:
 
         self.santa_module = SantaModule()
 
-        self.chance_send_sticker: float = chance_send_sticker
+        self.chance_send_sticker: float = settings.chance_talk_send_sticker
 
-        self.text_case_changer = TextCaseChanger(chance_random_case=0.1, chance_upper_case=0.1)
-        if text_case_changer is not None:
-            self.text_case_changer = text_case_changer
+        self.text_case_changer = TextCaseChanger(
+            chance_random_case=settings.chance_talk_random_case,
+            chance_upper_case=settings.chance_talk_upper_case,
+        )
+
+        self.stickers: list[str] = settings.stickers or [None]
+        self.reactions: list[str] = settings.reactions or [None]
 
     def exit(self):
         """Cleaning up tmp files before turning off"""
@@ -144,19 +195,10 @@ class Bot:
                 await self.handle_file(message)
             elif message.text:
                 await self.handle_text(message)
+            elif message.sticker:
+                await self.handle_sticker(message)
             else:
-                random_reaction = random.choice(
-                    [
-                        "EYES",
-                        "FACE_SCREAMING_IN_FEAR",
-                        "FACE_WITH_ONE_EYEBROW_RAISED",
-                        "FEARFUL_FACE",
-                        "FIRE",
-                        "HANDSHAKE",
-                        "OK_HAND_SIGN",
-                    ]
-                )
-                await self.world.reply(message, reply=Reply(reaction=random_reaction))
+                await self.world.reply(message=message, reply=Reply(reaction=random.choice(self.reactions)))
 
         except Exception as e:
             err_msg = '\n'.join([str(a) for a in e.args])
@@ -170,6 +212,11 @@ class Bot:
                 ]
             )
             await self._reply(message, Reply(text=reply_text))
+
+    async def handle_sticker(self, message: Message):
+        self.logger.info(f"Got sticker '{message.sticker}' | {message.id}")
+        reply_sticker = random.choice(self.stickers)
+        await self._reply(message=message, reply=Reply(sticker=reply_sticker))
 
     async def handle_file(self, message: Message):
         self.logger.info(f"Got file {message.filepath} | {message.id}")
@@ -282,6 +329,9 @@ class Bot:
             text = self.talk_module.handle_message(message)
             text = self.text_case_changer.process_text(text)
             await self._reply(message, reply=Reply(text=text))
+
+            if random.random() < self.chance_send_sticker:
+                await self._reply(message, reply=Reply(sticker=random.choice(self.stickers)))
         elif self.state == BotState.LEARN_TEXT_WAITING_TEXT_ID:
             self.text_id = message.text.split("\n")[0]
             self.state = BotState.LEARN_TEXT_WAITING_TEXT

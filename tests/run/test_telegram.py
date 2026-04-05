@@ -90,7 +90,6 @@ async def test_telegram_bot(tmp_path, app):
         tg_bot = TelegramBot(
             logger=logger,
             dir_path=tmp_path,
-            text_case_changer=TextCaseChanger(chance_random_case=0.0, chance_upper_case=0.0),
         )
 
         with patch.object(tg_bot.bot.world, "is_admin") as mock_is_admin:

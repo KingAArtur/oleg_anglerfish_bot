@@ -17,6 +17,7 @@ class Chat:
 @dataclass
 class Message:
     text: str | None = None
+    sticker: str | None = None
     filepath: str | None = None
     id: str | int | None = None
     from_user: User = field(default_factory=lambda: User())
