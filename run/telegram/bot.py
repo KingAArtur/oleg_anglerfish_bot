@@ -5,7 +5,7 @@ from pathlib import Path
 import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
 
-from base_classes import User, Message, Chat
+from src.base_classes import User, Message, Chat
 from src.bot import Bot, World, Reply, BotSettings
 from src.logger import DateFileLogger
 from src.logger import Logger, BaseLogger

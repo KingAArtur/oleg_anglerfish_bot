@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from base_classes import User, Message, Chat
+from src.base_classes import User, Message, Chat
 from src.bot import Bot, World, Reply, BotSettings
 from src.logger import FileLogger
 
