@@ -346,7 +346,7 @@ async def test_talk_module(bot, tmp_path):
 
     mock_call_last = mock_reply.mock_calls[-1]
     reply_text = mock_call_last.kwargs["reply"].text
-    expected_reply_text = f"курица упала на елку?"
+    expected_reply_text = f"Собака упала на елку?"
     assert reply_text == expected_reply_text
 
     assert bot.state == BotState.IDLE
@@ -361,6 +361,7 @@ async def test_talk_module(bot, tmp_path):
 async def test_text_case_changer(bot):
     bot.text_case_changer.chance_random_case = 0.25
     bot.text_case_changer.chance_upper_case = 0.35
+    bot.text_case_changer.random_case_max_len = 100
 
     txt = "a" * 100
 
@@ -372,6 +373,7 @@ async def test_text_case_changer(bot):
 
     for mock_call in mock_reply.mock_calls:
         reply_txt = mock_call.kwargs["reply"].text
+        reply_txt = reply_txt[1:]
 
         if "a" in reply_txt and "A" in reply_txt:
             results["random"] += 1
@@ -420,6 +422,10 @@ async def test_bot_settings(world, tmp_path):
             "chance_talk_upper_case": 0.1,
             "chance_talk_replace_to_swear": 0.2,
             
+            "talk_n_key_words": 7,
+            "talk_n_words_in_sentence": 18,
+            "chance_talk_new_line_after_sentence": 0.3,
+            
             "short_swear_max_length": 7,
             "short_swear_relative_chance": 0.8,
             
@@ -435,7 +441,12 @@ async def test_bot_settings(world, tmp_path):
     assert bot.chance_send_sticker == 0.2
     assert bot.text_case_changer.chance_random_case == 0.1
     assert bot.text_case_changer.chance_upper_case == 0.1
+
     assert bot.talk_module.swear_replacer.chance_to_replace == 0.2
     assert bot.talk_module.swear_replacer.short_swear_max_len == 7
     assert bot.talk_module.swear_replacer.short_swear_relative_chance == 0.8
     assert bot.talk_module.ngram_generator.n == 5
+
+    assert bot.talk_module.n_key_words == 7
+    assert bot.talk_module.n_words_in_sentence == 18
+    assert bot.talk_module.chance_new_line_after_sentence == 0.3

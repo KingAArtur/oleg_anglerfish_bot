@@ -33,6 +33,8 @@ class TextCaseChanger:
         self.chance_random_case = chance_random_case
         self.chance_upper_case = chance_upper_case
 
+        self.random_case_max_len = 30
+
     def process_text(self, text: str):
         text_case = random.choices(
             ["normal", "upper", "random"],
@@ -45,11 +47,10 @@ class TextCaseChanger:
         if text_case == "upper":
             text = text.upper()
         elif text_case == "random":
-            max_len = 30
-            if "." in text and len(text.split(".")[0]) < max_len:
+            if "." in text and len(text.split(".")[0]) < self.random_case_max_len:
                 first_part, second_part = text.split(".", maxsplit=1)
             else:
-                first_part, second_part = text[:max_len], text[max_len:]
+                first_part, second_part = text[:self.random_case_max_len], text[self.random_case_max_len:]
             text = ''.join([ch.upper() if random.random() < 0.5 else ch.lower() for ch in first_part]) + second_part
 
         return text
@@ -88,7 +89,7 @@ class BotSettings:
         settings.chance_talk_replace_to_swear = settings_dict["chance_talk_replace_to_swear"]
 
         settings.talk_n_key_words = settings_dict["talk_n_key_words"]
-        settings.n_words_in_sentence = settings_dict["n_words_in_sentence"]
+        settings.talk_n_words_in_sentence = settings_dict["talk_n_words_in_sentence"]
         settings.chance_talk_new_line_after_sentence = settings_dict["chance_talk_new_line_after_sentence"]
 
         settings.short_swear_max_length = settings_dict["short_swear_max_length"]

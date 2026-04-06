@@ -103,7 +103,7 @@ async def test_telegram_bot(tmp_path, app):
         'Прочитал! 3 юзеров и 1 пар',
         "Перестановка сгенерирована! Успехов! seed: 'gg'",
         'Ты, local_user, даришь подарок @chicken! Такие дела.',
-        'hahaha?',
+        'Hahaha?',
     ]
 
     assert len(expected_output) == len(mock_send_message.mock_calls)

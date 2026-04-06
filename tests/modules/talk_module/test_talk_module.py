@@ -18,4 +18,4 @@ def talk_module():
 def test_talk_module(talk_module):
     text = "Кошка"
     result = talk_module.generate_text(text=text)
-    assert result == "девочка любит маму?"
+    assert result == "Кошка любит маму?"

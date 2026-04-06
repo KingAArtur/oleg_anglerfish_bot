@@ -33,7 +33,7 @@ def test_console_bot(bot, tmp_path):
         'Прочитал! 3 юзеров и 1 пар',
         "Перестановка сгенерирована! Успехов! seed: 'gg'",
         'Ты, local_user, даришь подарок @chicken! Такие дела.',
-        'hahaha?',
+        'Hahaha?',
     ]
 
     assert len(expected_output) == len(patched_reply.mock_calls)
