@@ -10,4 +10,10 @@ def tokenize(text: str) -> list[str]:
 
 
 def detokenize(tokens: list[str]) -> str:
-    return nltk.tokenize.treebank.TreebankWordDetokenizer().detokenize(tokens)
+    result = nltk.tokenize.treebank.TreebankWordDetokenizer().detokenize(tokens)
+    for punkt in PUNKT_END_OF_SENTENCE:
+        result = result.replace(f" {punkt}", punkt)
+
+    result = result.replace("\n ", "\n")
+
+    return result

@@ -45,7 +45,12 @@ class TextCaseChanger:
         if text_case == "upper":
             text = text.upper()
         elif text_case == "random":
-            text = ''.join([ch.upper() if random.random() < 0.5 else ch.lower() for ch in text])
+            max_len = 30
+            if "." in text and len(text.split(".")[0]) < max_len:
+                first_part, second_part = text.split(".", maxsplit=1)
+            else:
+                first_part, second_part = text[:max_len], text[max_len:]
+            text = ''.join([ch.upper() if random.random() < 0.5 else ch.lower() for ch in first_part]) + second_part
 
         return text
 
@@ -59,6 +64,10 @@ class BotSettings:
     chance_talk_random_case: float = 0.0
     chance_talk_upper_case: float = 0.0
     chance_talk_replace_to_swear: float = 0.0
+
+    talk_n_key_words: int = 5
+    talk_n_words_in_sentence: int = 25
+    chance_talk_new_line_after_sentence: float = 0.0
 
     short_swear_max_length: int = 7
     short_swear_relative_chance: float = 1.0
@@ -77,6 +86,10 @@ class BotSettings:
         settings.chance_talk_random_case = settings_dict["chance_talk_random_case"]
         settings.chance_talk_upper_case = settings_dict["chance_talk_upper_case"]
         settings.chance_talk_replace_to_swear = settings_dict["chance_talk_replace_to_swear"]
+
+        settings.talk_n_key_words = settings_dict["talk_n_key_words"]
+        settings.n_words_in_sentence = settings_dict["n_words_in_sentence"]
+        settings.chance_talk_new_line_after_sentence = settings_dict["chance_talk_new_line_after_sentence"]
 
         settings.short_swear_max_length = settings_dict["short_swear_max_length"]
         settings.short_swear_relative_chance = settings_dict["short_swear_relative_chance"]
@@ -144,7 +157,13 @@ class Bot:
             swear_replacer.chance_to_replace = settings.chance_talk_replace_to_swear
             swear_replacer.short_swear_relative_chance = settings.short_swear_relative_chance
 
-        self.talk_module: TalkModule = TalkModule(ngram_generator=ngram_generator, swear_replacer=swear_replacer)
+        self.talk_module: TalkModule = TalkModule(
+            ngram_generator=ngram_generator,
+            swear_replacer=swear_replacer,
+            n_key_words=settings.talk_n_key_words,
+            n_words_in_sentence=settings.talk_n_words_in_sentence,
+            chance_new_line_after_sentence=settings.chance_talk_new_line_after_sentence,
+        )
 
         self.text_id: str = ""
 
