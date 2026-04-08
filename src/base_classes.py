@@ -12,6 +12,7 @@ class Chat:
     type: str | None = None
     title: str | None = None
     id: str | int | None = None
+    users: list[User] | None = None
 
 
 @dataclass

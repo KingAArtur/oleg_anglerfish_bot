@@ -20,6 +20,9 @@ class FakeTelegramBot:
     async def send_message(self, *args, **kwargs):
         pass
 
+    async def get_chat_administrators(self, *args, **kwargs):
+        return []
+
 
 class FakeTelegramApp:
     def __init__(self):

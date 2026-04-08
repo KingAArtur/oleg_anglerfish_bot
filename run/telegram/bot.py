@@ -81,7 +81,12 @@ class TelegramBot:
                 ):
                     return
                 user = User(username=tg_message.from_user.username, id=str(tg_message.from_user.id))
-                chat = Chat(type=tg_message.chat.type, title=tg_message.chat.title, id=tg_message.chat.id)
+                tg_chat = tg_message.chat
+                chat_administrators = [
+                    User(username=member.user.username)
+                    for member in await self.app.bot.get_chat_administrators(chat_id=tg_chat.id)
+                ] if tg_chat.type != "private" else None
+                chat = Chat(type=tg_chat.type, title=tg_chat.title, id=tg_chat.id, users=chat_administrators)
                 message = Message(
                     id=tg_message.id, from_user=user, chat=chat, message_thread_id=tg_message.message_thread_id,
                 )

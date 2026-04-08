@@ -3,8 +3,9 @@ from textwrap import dedent
 from unittest.mock import patch
 
 import pytest
+from freezegun import freeze_time
 
-from base_classes import Message
+from base_classes import Message, Chat, User
 from src.bot import Reply, BotState, Bot, BotSettings
 
 NO_PERMISSION_TEXT = "У тебя нет полномочий для этого!"
@@ -402,6 +403,50 @@ async def test_send_stickers(bot):
 
     assert mock_reply.mock_calls[0].kwargs["reply"] == Reply(sticker="sticker_with_cat")
     assert mock_reply.mock_calls[2].kwargs["reply"] == Reply(sticker="sticker_with_cat")
+
+
+@pytest.mark.asyncio
+async def test_command_horoscope(bot, user):
+    message = Message(text=f"/horoscope", from_user=user)
+
+    n = 100
+    with patch.object(bot.world, "reply") as mock_reply, freeze_time("2026-04-08"):
+        for _ in range(n):
+            await bot.handle_message(message)
+
+    assert len(mock_reply.mock_calls) == n
+    results = {call.kwargs["reply"].text for call in mock_reply.mock_calls}
+    assert len(results) == 1
+
+    expected_reply_text = (
+        "Пришло время взяться за сложную задачу! "
+        "Сегодня тебя ждет успех в ней. "
+        "Ты победишь в какой-нибудь игре, но стоит вовремя остановиться! Сегодня твой интеллект в норме. "
+        "Сегодняшние новости могут оказаться не очень хорошими, берегись! "
+        "Лучше надеть что-то потемнее, в этом ты будешь выглядеть потрясающе! "
+    )
+    assert results.pop() == expected_reply_text
+
+    assert bot.state == BotState.IDLE
+
+
+@pytest.mark.asyncio
+async def test_command_love(bot):
+    message = Message(text=f"/love", chat=Chat(users=[User(username="first"), User(username="second")]))
+
+    n = 100
+    with patch.object(bot.world, "reply") as mock_reply, freeze_time("2026-04-08"):
+        for _ in range(n):
+            await bot.handle_message(message)
+
+    assert len(mock_reply.mock_calls) == n
+    results = {call.kwargs["reply"].text for call in mock_reply.mock_calls}
+    assert len(results) == 1
+
+    expected_reply_text = "Сегодня я люблю first и недолюбливаю second"
+    assert results.pop() == expected_reply_text
+
+    assert bot.state == BotState.IDLE
 
 
 @pytest.mark.asyncio

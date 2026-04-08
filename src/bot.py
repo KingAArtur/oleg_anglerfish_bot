@@ -1,3 +1,4 @@
+import datetime
 import random
 from dataclasses import dataclass, field
 from enum import Enum
@@ -303,6 +304,19 @@ class Bot:
             await self._reply(message, reply=Reply(text=text))
             self.state = BotState.IDLE
             return
+        elif text.startswith("/love"):
+            if not message.chat.users:
+                await self._reply(message, reply=Reply(text="Некого любить в этом чате..."))
+            else:
+                fixed_random = random.Random()
+                fixed_random.seed(f"{datetime.date.today()}")
+                users = sorted(message.chat.users, key=lambda u: u.username)
+                loved = fixed_random.choice(users)
+                hated = fixed_random.choice(users)
+                text = f"Сегодня я люблю {loved.username} и недолюбливаю {hated.username}"
+                await self._reply(message, reply=Reply(text=text))
+                self.state = BotState.IDLE
+                return
         elif text.startswith("/learn_text"):
             if not self.world.is_admin(message.from_user):
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
