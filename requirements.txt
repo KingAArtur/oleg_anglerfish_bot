@@ -1,3 +1,4 @@
+freezegun
 nltk
 pymorphy3
 pytest

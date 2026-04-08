@@ -8,7 +8,7 @@ import json
 from src.base_classes import Message, User
 from src.file_manager import FileManager
 from src.logger import Logger, BaseLogger
-from src.modules import TalkModule, SwearReplacer, NGramGenerator, SantaModule
+from src.modules import TalkModule, SwearReplacer, NGramGenerator, SantaModule, HoroscopeModule
 from src.modules.talk.base import tokenize
 
 
@@ -177,6 +177,8 @@ class Bot:
             chance_upper_case=settings.chance_talk_upper_case,
         )
 
+        self.horoscope_module = HoroscopeModule()
+
         self.stickers: list[str] = settings.stickers or [None]
         self.reactions: list[str] = settings.reactions or [None]
 
@@ -294,6 +296,11 @@ class Bot:
             return
         elif text.startswith("/start"):
             await self._reply(message, reply=Reply(text=f'Что тебе от меня надо, {message.from_user.username}'))
+            self.state = BotState.IDLE
+            return
+        elif text.startswith("/horoscope"):
+            text = self.horoscope_module.handle_message(message=message)
+            await self._reply(message, reply=Reply(text=text))
             self.state = BotState.IDLE
             return
         elif text.startswith("/learn_text"):
