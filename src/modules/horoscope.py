@@ -90,4 +90,7 @@ class HoroscopeModule(BaseModule):
             )[0]
             result += "\n\n" if fixed_random.random() < 0.2 else " "
 
+        if message.from_user.name:
+            result = message.from_user.name + ", " + result[0].lower() + result[1:]
+
         return result

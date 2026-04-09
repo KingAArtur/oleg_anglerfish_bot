@@ -1,11 +1,12 @@
 import asyncio
 import os
 from pathlib import Path
+import json
 
 import telegram  # noqa https://youtrack.jetbrains.com/issue/PY-60059
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes  # noqa
 
-from src.base_classes import User, Message, Chat
+from src.base_classes import User, Message, Chat, UserPrivileges
 from src.bot import Bot, World, Reply, BotSettings
 from src.logger import DateFileLogger
 from src.logger import Logger, BaseLogger
@@ -44,14 +45,12 @@ class TelegramWorld(World):
     async def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
         await self.tg_bot.send_message(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
-    def is_admin(self, user: User) -> bool:
-        return str(user.id) == os.getenv("ADMIN_ID")
-
 
 class TelegramBot:
     def __init__(
         self,
         logger: Logger,
+        users: dict[str, User],
         dir_path: str | Path = Bot.DEFAULT_DIR_PATH,
         settings: BotSettings | None = None,
     ):
@@ -60,6 +59,8 @@ class TelegramBot:
 
         world = TelegramWorld(bot=self.app.bot)
         self.bot = Bot(dir_path=dir_path, logger=logger, world=world, bot_settings=settings)
+
+        self.users = users
 
     def __enter__(self):
         self.app.run_polling()
@@ -80,10 +81,13 @@ class TelegramBot:
                     and tg_message.reply_to_message.from_user.id != self.app.bot.id
                 ):
                     return
-                user = User(username=tg_message.from_user.username, id=str(tg_message.from_user.id))
+
+                user = self.users.get(tg_message.from_user.username, User(username=tg_message.from_user.username))
+                user.id = str(tg_message.from_user.id)
+
                 tg_chat = tg_message.chat
                 chat_administrators = [
-                    User(username=member.user.username)
+                    self.users.get(member.user.username, User(username=member.user.username))
                     for member in await self.app.bot.get_chat_administrators(chat_id=tg_chat.id)
                 ] if tg_chat.type != "private" else None
                 chat = Chat(type=tg_chat.type, title=tg_chat.title, id=tg_chat.id, users=chat_administrators)
@@ -132,7 +136,31 @@ def run(dir_path: str | Path = Bot.DEFAULT_DIR_PATH):
         settings = BotSettings.from_str(content)
         print(f"Read config succesfully!")
 
-    tg_bot = TelegramBot(logger=logger, dir_path=dir_path, settings=settings)
+    users_filepath = os.getenv("USERS")
+    if users_filepath:
+        print(f"Trying to read {users_filepath}")
+        with open(users_filepath, encoding="utf-8") as file:
+            content = file.read()
+        users_dict = json.loads(content)
+        users = {
+            username: User(
+                username=username,
+                name=data.get("name"),
+                sex=data.get("sex"),
+                privileges=UserPrivileges.ADMIN if data.get("admin") else UserPrivileges.GUEST,
+            )
+            for username, data in users_dict.items()
+        }
+        print(f"Read users file succesfully! {len(users)} users")
+    else:
+        admin_username = os.getenv("ADMIN_USERNAME")
+        if not admin_username:
+            raise ValueError("Need to provide users file in USERS or admin username in ADMIN_USERNAME")
+        users = {
+            "admin_username": User(username=admin_username, privileges=UserPrivileges.ADMIN)
+        }
+
+    tg_bot = TelegramBot(logger=logger, dir_path=dir_path, settings=settings, users=users)
 
     print(f"Starting...")
     with tg_bot:

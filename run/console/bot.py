@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from src.base_classes import User, Message, Chat
+from src.base_classes import User, Message, Chat, UserPrivileges
 from src.bot import Bot, World, Reply, BotSettings
 from src.logger import FileLogger
 
@@ -12,12 +12,9 @@ class ConsoleWorld(World):
 
         print(content)
 
-    def is_admin(self, user: User) -> bool:
-        return True
-
 
 def run(bot: Bot):
-    user = User(username="local_user")
+    user = User(username="local_user", privileges=UserPrivileges.ADMIN)
     chat = Chat(type="local", title="Local_chat", id="")
 
     with bot:

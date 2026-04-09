@@ -1,12 +1,12 @@
 import datetime
+import json
 import random
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from textwrap import dedent
-import json
 
-from src.base_classes import Message, User
+from src.base_classes import Message, UserPrivileges
 from src.file_manager import FileManager
 from src.logger import Logger, BaseLogger
 from src.modules import TalkModule, SwearReplacer, NGramGenerator, SantaModule, HoroscopeModule, ChooseModule
@@ -111,9 +111,6 @@ class World:
     async def send_text_to_any_chat(self, text: str, chat_id: str, message_thread_id: str = None):
         raise NotImplementedError
 
-    def is_admin(self, user: User) -> bool:
-        raise NotImplementedError
-
 
 class Bot:
     NGRAM_SAVE_FILE_NAME: str = "ngram_save_file.txt"
@@ -210,9 +207,14 @@ class Bot:
         await self.world.send_text_to_any_chat(text=text, chat_id=chat_id, message_thread_id=message_thread_id)
 
     async def handle_message(self, message: Message):
-        user_str = message.from_user.username
+        from_user = message.from_user
+        user_str = from_user.username
         chat_str = (message.chat.type or '') + (message.chat.title or '')
         self.logger.info(f"Got message from user {user_str} in chat {chat_str} | {message.id}")
+
+        if from_user.privileges < UserPrivileges.GUEST:
+            await self.world.reply(message=message, reply=Reply(text="Я не знаю тебя!"))
+            return
 
         try:
             if message.filepath:
@@ -286,10 +288,11 @@ class Bot:
 
     async def handle_text(self, message: Message):
         text = message.text
+        from_user = message.from_user
         self.logger.info(f"Message text: '{text}' | {message.id}")
         # some commands are independent of current state
         if text.startswith("/send"):
-            if not self.world.is_admin(message.from_user):
+            if from_user.privileges != UserPrivileges.ADMIN:
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
 
@@ -297,7 +300,9 @@ class Bot:
             await self._send_text_to_any_chat(chat_id=chat_id, message_thread_id=message_thread_id, text=text)
             return
         elif text.startswith("/start"):
-            await self._reply(message, reply=Reply(text=f'Что тебе от меня надо, {message.from_user.username}'))
+            await self._reply(
+                message, reply=Reply(text=f'Что тебе от меня надо, {from_user.name or from_user.username}')
+            )
             self.state = BotState.IDLE
             return
         elif text.startswith("/horoscope"):
@@ -314,7 +319,7 @@ class Bot:
                 users = sorted(message.chat.users, key=lambda u: u.username)
                 loved = fixed_random.choice(users)
                 hated = fixed_random.choice(users)
-                text = f"Сегодня я люблю {loved.username} и недолюбливаю {hated.username}"
+                text = f"Сегодня я люблю {loved.name or loved.username} и недолюбливаю {hated.name or hated.username}"
                 await self._reply(message, reply=Reply(text=text))
                 self.state = BotState.IDLE
                 return
@@ -325,21 +330,21 @@ class Bot:
             self.state = BotState.IDLE
             return
         elif text.startswith("/learn_text"):
-            if not self.world.is_admin(message.from_user):
+            if from_user.privileges != UserPrivileges.ADMIN:
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.LEARN_TEXT_WAITING_TEXT_ID
             await self._reply(message, reply=Reply(text=f'Напиши название, под которым я запомню этот текст.'))
             return
         elif text.startswith("/learn_swears"):
-            if not self.world.is_admin(message.from_user):
+            if from_user.privileges != UserPrivileges.ADMIN:
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.LEARN_SWEARS_WAITING_TEXT
             await self._reply(message, reply=Reply(text=f'Пришли текстовый файл со словами.'))
             return
         elif text.startswith("/forget_text"):
-            if not self.world.is_admin(message.from_user):
+            if from_user.privileges != UserPrivileges.ADMIN:
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.FORGET_TEXT_WAITING_TEXT_ID
@@ -352,14 +357,14 @@ class Bot:
             await self._reply(message, reply=Reply(text=msg))
             return
         elif text.startswith("/santa_init"):
-            if not self.world.is_admin(message.from_user):
+            if from_user.privileges != UserPrivileges.ADMIN:
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             self.state = BotState.HIDDEN_SANTA_WAITING_FILE
             await self._reply(message, reply=Reply(text=f'Пришли текстовый файл с юзерами и запрещенными парами.'))
             return
         elif text.startswith("/santa_start"):
-            if not self.world.is_admin(message.from_user):
+            if from_user.privileges != UserPrivileges.ADMIN:
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
                 return
             seed = text.split(maxsplit=1)[1].strip() if len(text.split()) >= 2 else None

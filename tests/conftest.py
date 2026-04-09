@@ -3,7 +3,7 @@ from textwrap import dedent
 
 import pytest
 
-from base_classes import User, Message
+from base_classes import User, Message, UserPrivileges
 from src.bot import Bot, Reply, World, TextCaseChanger
 from src.logger import BaseLogger
 
@@ -17,9 +17,6 @@ class EmptyWorld(World):
 
     async def send_text_to_any_chat(self, text: str, chat_id: int, message_thread_id: int = None):
         pass
-
-    def is_admin(self, user: User) -> bool:
-        return True
 
 
 @pytest.fixture
@@ -57,5 +54,5 @@ def bot(world, tmp_path) -> Bot:
 
 @pytest.fixture
 def user() -> User:
-    user = User(username="Driller")
+    user = User(username="Driller", name="DrillerName", privileges=UserPrivileges.ADMIN)
     return user

@@ -1,10 +1,20 @@
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class UserPrivileges(int, Enum):
+    UNKNOWN = 0
+    GUEST = 1
+    ADMIN = 2
 
 
 @dataclass
 class User:
     username: str | None = None
     id: str | None = None
+    name: str | None = None
+    sex: str | None = None
+    privileges: UserPrivileges = UserPrivileges.UNKNOWN
 
 
 @dataclass

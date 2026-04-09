@@ -11,6 +11,7 @@ from telegram.ext import ApplicationBuilder  # noqa
 from run.telegram.bot import TelegramBot
 from src.bot import BotState, TextCaseChanger
 from src.logger import BaseLogger
+from src.base_classes import User, UserPrivileges
 
 
 class FakeTelegramBot:
@@ -93,12 +94,11 @@ async def test_telegram_bot(tmp_path, app):
         tg_bot = TelegramBot(
             logger=logger,
             dir_path=tmp_path,
+            users={"local_user": User(username="local_user", privileges=UserPrivileges.ADMIN)}
         )
 
-        with patch.object(tg_bot.bot.world, "is_admin") as mock_is_admin:
-            mock_is_admin.side_effect = lambda _: True
-            for update in updates:
-                await tg_bot.handle_update(update, context=None)
+        for update in updates:
+            await tg_bot.handle_update(update, context=None)
 
     expected_output = [
         'Что тебе от меня надо, local_user',
