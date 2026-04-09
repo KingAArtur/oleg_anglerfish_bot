@@ -450,6 +450,22 @@ async def test_command_love(bot):
 
 
 @pytest.mark.asyncio
+async def test_command_choose(bot):
+    message = Message(text="/choose Как совунья размножается: откладывает яйца или жахается?")
+
+    with patch.object(bot.world, "reply") as mock_reply:
+        await bot.handle_message(message)
+
+    assert len(mock_reply.mock_calls) == 1
+    result = mock_reply.mock_calls[0].kwargs["reply"].text
+
+    assert result.split("\n")[0] == "Я утверждаю, что жахается!"
+    assert "откладывает яйца" in ''.join(result.split("\n")[1:]).lower()
+
+    assert bot.state == BotState.IDLE
+
+
+@pytest.mark.asyncio
 async def test_bot_settings(world, tmp_path):
     settings_str = dedent(
         """\

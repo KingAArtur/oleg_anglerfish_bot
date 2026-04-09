@@ -9,7 +9,7 @@ import json
 from src.base_classes import Message, User
 from src.file_manager import FileManager
 from src.logger import Logger, BaseLogger
-from src.modules import TalkModule, SwearReplacer, NGramGenerator, SantaModule, HoroscopeModule
+from src.modules import TalkModule, SwearReplacer, NGramGenerator, SantaModule, HoroscopeModule, ChooseModule
 from src.modules.talk.base import tokenize
 
 
@@ -179,6 +179,7 @@ class Bot:
         )
 
         self.horoscope_module = HoroscopeModule()
+        self.choose_module = ChooseModule()
 
         self.stickers: list[str] = settings.stickers or [None]
         self.reactions: list[str] = settings.reactions or [None]
@@ -317,6 +318,12 @@ class Bot:
                 await self._reply(message, reply=Reply(text=text))
                 self.state = BotState.IDLE
                 return
+        elif text.startswith("/choose"):
+            message.text = message.text[len("/choose"):]
+            text = self.choose_module.handle_message(message=message)
+            await self._reply(message, reply=Reply(text=text))
+            self.state = BotState.IDLE
+            return
         elif text.startswith("/learn_text"):
             if not self.world.is_admin(message.from_user):
                 await self._reply(message, reply=Reply(text="У тебя нет полномочий для этого!"))
