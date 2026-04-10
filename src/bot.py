@@ -1,4 +1,3 @@
-import datetime
 import json
 import random
 from dataclasses import dataclass, field
@@ -11,6 +10,7 @@ from src.file_manager import FileManager
 from src.logger import Logger, BaseLogger
 from src.modules import TalkModule, SwearReplacer, NGramGenerator, SantaModule, HoroscopeModule, ChooseModule
 from src.modules.talk.base import tokenize
+from src.utils import today
 
 
 class BotState(Enum):
@@ -314,8 +314,7 @@ class Bot:
             if not message.chat.users:
                 await self._reply(message, reply=Reply(text="Некого любить в этом чате..."))
             else:
-                fixed_random = random.Random()
-                fixed_random.seed(f"{datetime.date.today()}")
+                fixed_random = random.Random(x=f"{today()}")
                 users = sorted(message.chat.users, key=lambda u: u.username)
                 loved = fixed_random.choice(users)
                 hated = fixed_random.choice(users)

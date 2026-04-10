@@ -1,7 +1,7 @@
-from datetime import date
 import random
 
 from src.base_classes import Message
+from src.utils import today
 from .base import BaseModule
 
 
@@ -75,9 +75,8 @@ class HoroscopeModule(BaseModule):
         super().__init__()
 
     def handle_message(self, message: Message, n_features: int = 5) -> str:
-        seed = f"{date.today()}_{message.from_user.username}"
-        fixed_random = random.Random()
-        fixed_random.seed(seed)
+        seed = f"{today()}_{message.from_user.username}"
+        fixed_random = random.Random(x=seed)
 
         features = list(self.FEATURES.keys())
         fixed_random.shuffle(features)
