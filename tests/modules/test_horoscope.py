@@ -1,3 +1,5 @@
+import random
+
 import pytest
 from freezegun import freeze_time
 from textwrap import dedent
@@ -11,17 +13,22 @@ def horoscope_module() -> HoroscopeModule:
     horoscope_module = HoroscopeModule(n_features=1)
     horoscope_module.features = {
         "love": {
-            "I love you!": 0.5,
-            "Nobody loves you!": 0.5,
+            "Люблю!": 0.5,
+            "Не люблю!": 0.5,
         },
         "intelligence": {
-            "U r smart!": 0.5,
-            "Stupid!": 0.5,
+            "Умница!": 0.5,
+            "Тупица": 0.5,
         },
         "food": {
-            "You are tasty!": 0.5,
-            "I would love to eat you.": 0.5,
+            "Вкуснятина!": 0.5,
+            "Аппетитно!": 0.5,
         },
+    }
+    horoscope_module.dreams = {
+        "action": ["отжарил"],
+        "object": ["курицу"],
+        "how": ["аппетитно"],
     }
     return horoscope_module
 
@@ -66,35 +73,11 @@ def test_horoscope__different_results_for_different_days(horoscope_module, users
     assert len(results) == n
 
 
-def test_horoscope__load_data_from_file(horoscope_module, tmp_path):
-    filename = "data.json"
-    with open(tmp_path / filename, "w", encoding="utf-8") as file:
-        file.write(
-            dedent(
-                """\
-                {
-                    "features": {
-                        "a": {
-                            "aa": 0.5,
-                            "aaa": 0.5
-                        },
-                        "b": {
-                            "bb": 1.0
-                        }
-                    }
-                }
-                """
-            )
-        )
+def test_horoscope__generate_text_dreams(horoscope_module):
+    fixed_random = random.Random(x=42)
+    result = horoscope_module.generate_text_dreams(fixed_random=fixed_random, gender="m")
+    assert result == "Этой ночью мне приснилось, как ты отжарил курицу. Выглядел аппетитно!"
 
-    horoscope_module.load_data_from_file(tmp_path / filename)
-
-    assert horoscope_module.features == {
-        "a": {
-            "aa": 0.5,
-            "aaa": 0.5,
-        },
-        "b": {
-            "bb": 1.0,
-        },
-    }
+    fixed_random = random.Random(x=42)
+    result = horoscope_module.generate_text_dreams(fixed_random=fixed_random, gender="w")
+    assert result == "Этой ночью мне приснилось, как ты отжарила курицу. Выглядела аппетитно!"
